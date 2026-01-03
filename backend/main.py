@@ -6,7 +6,7 @@ from sqlmodel import SQLModel
 
 # --- CONFIGURATION ---
 # Your API Key is set directly here
-GENAI_API_KEY = "AIzaSyDea1bR6EIY31UvDIdSPovMVhDDAWyzC9c"
+GENAI_API_KEY = "..."
 
 # Configure Gemini DIRECTLY (No if-statements needed)
 genai.configure(api_key=GENAI_API_KEY)
