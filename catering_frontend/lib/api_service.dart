@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class ApiService {
   // Use 10.0.2.2 for Android Emulator.
   // If using a real device, use your PC's IP (e.g., 10.125.24.64)
-  static const String baseUrl = "http://10.125.24.64:8000";
+  static const String baseUrl = "http://192.168.43.192:8000";
 
   // --- 1. GENERATE MENU (FIXED: Uses budget_per_plate) ---
   static Future<Map<String, dynamic>> generateMenu({

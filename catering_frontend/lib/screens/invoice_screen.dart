@@ -3,6 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../api_service.dart';
+import '../notification_service.dart';
 
 class InvoiceScreen extends StatefulWidget {
   final int menuId;
@@ -144,7 +145,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     }
 
     try {
-      // 1. Save to Database
+      // 1. Save to Database (Existing Code)
       await ApiService.saveInvoice(
         menuId: widget.menuId,
         clientName: _clientController.text,
@@ -155,7 +156,19 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         eventDate: "${_selectedDate.toLocal()}".split(' ')[0],
       );
 
-      // 2. Generate PDF
+      // 2. NEW: Schedule Push Notification
+      // Alert user 1 day before the event
+      await NotificationService.scheduleEventReminder(
+        id: widget.menuId, // Unique ID
+        title: "Upcoming Event: ${_clientController.text}",
+        body: "You have a catering event tomorrow! Check preparations.",
+        eventDate: _selectedDate,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Invoice Saved & Reminder Set!")));
+
+      // 3. Generate PDF (Existing Code)
       await _generatePdfInvoice();
     } catch (e) {
       ScaffoldMessenger.of(context)

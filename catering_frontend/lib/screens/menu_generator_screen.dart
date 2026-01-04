@@ -1,6 +1,9 @@
 import 'package:catering_frontend/screens/history_screen.dart';
 import 'package:flutter/material.dart';
 import '../api_service.dart';
+// --- NEW IMPORTS FOR LANGUAGE ---
+import '../translations.dart';
+import '../main.dart';
 
 class MenuGeneratorScreen extends StatefulWidget {
   const MenuGeneratorScreen({super.key});
@@ -23,6 +26,11 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
   bool _isLoading = false;
   Map<String, dynamic>? _generatedMenu;
   String? _errorMessage;
+
+  // --- HELPER TRANSLATION FUNCTION ---
+  String t(String key) {
+    return AppTranslations.get(currentLanguage.value, key);
+  }
 
   @override
   void dispose() {
@@ -88,8 +96,9 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         budget: int.tryParse(_budgetController.text) ?? 500,
         fullMenu: _generatedMenu!,
       );
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Menu Saved!"), backgroundColor: Colors.green));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(t('menu_saved')),
+          backgroundColor: Colors.green)); // Translated
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Failed: $e"), backgroundColor: Colors.red));
@@ -136,7 +145,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Add to $section"),
+        title: Text("${t('add_item')} $section"), // Translated Part
         content: TextField(
             controller: addCtrl,
             decoration: const InputDecoration(labelText: "New Dish Name")),
@@ -167,149 +176,161 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          title: const Text("AI Menu Planner"),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.history),
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => const HistoryScreen())),
+    // Wrap with ValueListenableBuilder to listen for Language Changes
+    return ValueListenableBuilder<String>(
+      valueListenable: currentLanguage,
+      builder: (context, lang, child) {
+        return GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          child: Scaffold(
+            backgroundColor: Colors.white,
+            appBar: AppBar(
+              title: Text(t('menu_generator_title')), // Translated
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.history),
+                  onPressed: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const HistoryScreen())),
+                ),
+              ],
             ),
-          ],
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              // --- FORM SECTION ---
-              Card(
-                elevation: 4,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      // RESTORED FULL EVENT LIST
-                      _buildDropdown(
-                          "Event Type",
-                          [
-                            "Wedding",
-                            "Birthday",
-                            "Corporate",
-                            "Anniversary",
-                            "Engagement"
-                          ],
-                          _selectedEvent,
-                          (v) => setState(() => _selectedEvent = v!)),
-                      const SizedBox(height: 10),
-
-                      // RESTORED FULL CUISINE LIST
-                      _buildDropdown(
-                          "Cuisine",
-                          [
-                            "North Indian",
-                            "South Indian",
-                            "Chinese",
-                            "Continental",
-                            "Italian"
-                          ],
-                          _selectedCuisine,
-                          (v) => setState(() => _selectedCuisine = v!)),
-                      const SizedBox(height: 10),
-
-                      // RESTORED DIETARY PREFERENCE
-                      _buildDropdown(
-                          "Dietary Preference",
-                          ["Veg", "Non-Veg", "Vegan", "Jain"],
-                          _selectedDiet,
-                          (v) => setState(() => _selectedDiet = v!)),
-
-                      const SizedBox(height: 10),
-                      Row(
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  // --- FORM SECTION ---
+                  Card(
+                    elevation: 4,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
                         children: [
-                          Expanded(
-                              child: _buildTextField(
-                                  "Guests", _guestsController, Icons.people,
-                                  isNumber: true)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                              child: _buildTextField("Budget/Plate",
-                                  _budgetController, Icons.currency_rupee,
-                                  isNumber: true)),
+                          // RESTORED FULL EVENT LIST
+                          _buildDropdown(
+                              t('event_type'), // Translated
+                              [
+                                "Wedding",
+                                "Birthday",
+                                "Corporate",
+                                "Anniversary",
+                                "Engagement"
+                              ],
+                              _selectedEvent,
+                              (v) => setState(() => _selectedEvent = v!)),
+                          const SizedBox(height: 10),
+
+                          // RESTORED FULL CUISINE LIST
+                          _buildDropdown(
+                              t('cuisine'), // Translated
+                              [
+                                "North Indian",
+                                "South Indian",
+                                "Chinese",
+                                "Continental",
+                                "Italian"
+                              ],
+                              _selectedCuisine,
+                              (v) => setState(() => _selectedCuisine = v!)),
+                          const SizedBox(height: 10),
+
+                          // RESTORED DIETARY PREFERENCE
+                          _buildDropdown(
+                              t('dietary'), // Translated
+                              ["Veg", "Non-Veg", "Vegan", "Jain"],
+                              _selectedDiet,
+                              (v) => setState(() => _selectedDiet = v!)),
+
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                  child: _buildTextField(
+                                      t('guests'), // Translated
+                                      _guestsController,
+                                      Icons.people,
+                                      isNumber: true)),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                  child: _buildTextField(
+                                      t('budget'), // Translated
+                                      _budgetController,
+                                      Icons.currency_rupee,
+                                      isNumber: true)),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton.icon(
+                              onPressed: _isLoading ? null : _generateMenu,
+                              icon: _isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.auto_awesome),
+                              label: Text(_isLoading
+                                  ? t('generating')
+                                  : t('generate_btn')), // Translated
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.deepPurple,
+                                  foregroundColor: Colors.white),
+                            ),
+                          )
                         ],
                       ),
-                      const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton.icon(
-                          onPressed: _isLoading ? null : _generateMenu,
-                          icon: _isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
-                              : const Icon(Icons.auto_awesome),
-                          label: Text(
-                              _isLoading ? "Generating..." : "Generate Menu"),
-                          style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.deepPurple,
-                              foregroundColor: Colors.white),
-                        ),
-                      )
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 20),
+                  const SizedBox(height: 20),
 
-              // --- ERROR DISPLAY ---
-              if (_errorMessage != null)
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  color: Colors.red.shade100,
-                  child: Text(_errorMessage!,
-                      style: const TextStyle(color: Colors.red)),
-                ),
+                  // --- ERROR DISPLAY ---
+                  if (_errorMessage != null)
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      color: Colors.red.shade100,
+                      child: Text(_errorMessage!,
+                          style: const TextStyle(color: Colors.red)),
+                    ),
 
-              // --- MENU RESULTS SECTION ---
-              if (_generatedMenu != null) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Suggested Menu",
-                        style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.deepPurple)),
-                    IconButton(
-                      icon: const Icon(Icons.save, color: Colors.deepPurple),
-                      onPressed: _saveMenu,
-                      tooltip: "Save to History",
-                    )
+                  // --- MENU RESULTS SECTION ---
+                  if (_generatedMenu != null) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(t('suggested_menu'), // Translated
+                            style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.deepPurple)),
+                        IconButton(
+                          icon:
+                              const Icon(Icons.save, color: Colors.deepPurple),
+                          onPressed: _saveMenu,
+                          tooltip: t('save_history'), // Translated
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Editable Sections (Matches backend JSON keys exactly)
+                    _buildEditableSection("starters", t('starters')),
+                    _buildEditableSection("main_course", t('main_course')),
+                    _buildEditableSection("breads", t('breads')),
+                    _buildEditableSection("rice", t('rice')),
+                    _buildEditableSection("desserts", t('desserts')),
+                    _buildEditableSection("beverages", t('beverages')),
                   ],
-                ),
-                const SizedBox(height: 10),
-
-                // Editable Sections (Matches backend JSON keys exactly)
-                _buildEditableSection("starters", "Starters"),
-                _buildEditableSection("main_course", "Main Course"),
-                _buildEditableSection("breads", "Breads"),
-                _buildEditableSection("rice", "Rice"),
-                _buildEditableSection("desserts", "Desserts"),
-                _buildEditableSection("beverages", "Beverages"),
-              ],
-              const SizedBox(height: 50),
-            ],
+                  const SizedBox(height: 50),
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -353,7 +374,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
           TextButton.icon(
             onPressed: () => _addItem(jsonKey),
             icon: const Icon(Icons.add),
-            label: const Text("Add Item"),
+            label: Text(t('add_item')), // Translated
           )
         ],
       ),
