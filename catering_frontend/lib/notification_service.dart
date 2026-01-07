@@ -27,7 +27,6 @@ class NotificationService {
 
     await _notificationsPlugin.initialize(settings);
 
-    // ✅ Android notification channel
     const AndroidNotificationChannel channel = AndroidNotificationChannel(
       'catering_channel',
       'Catering Reminders',
@@ -45,9 +44,9 @@ class NotificationService {
     }
   }
 
-  static const bool _testMode = true;
+  static const bool _testMode = false;
 
-  /// 🔔 Notification on EVENT DAY at 9:00 AM
+  /// Notification on EVENT DAY at 9:00 AM
   static Future<void> scheduleEventDayReminder({
     required String title,
     required String body,
@@ -58,10 +57,10 @@ class NotificationService {
     late DateTime scheduledDate;
 
     if (_testMode) {
-      // 🧪 TEST MODE → 10 seconds from now
+      // TEST MODE → 10 seconds from now
       scheduledDate = DateTime.now().add(const Duration(seconds: 10));
     } else {
-      // 🚀 PRODUCTION MODE → Event day at 9:00 AM
+      //PRODUCTION MODE → Event day at 9:00 AM
       scheduledDate = DateTime(
         eventDate.year,
         eventDate.month,

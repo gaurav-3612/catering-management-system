@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:catering_frontend/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -9,7 +11,7 @@ import '../main.dart';
 
 class InvoiceScreen extends StatefulWidget {
   final int menuId;
-  final double baseAmount; // Amount from Pricing Screen
+  final double baseAmount;
 
   const InvoiceScreen({
     super.key,
@@ -82,7 +84,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
-  // --- PDF GENERATION (UPDATED WITH COMPANY PROFILE) ---
+  // --- PDF GENERATION (UPDATED WITH LOGO) ---
   Future<void> _generatePdfInvoice() async {
     // 1. Fetch Company Profile
     final profile = await ApiService.fetchCompanyProfile();
@@ -93,6 +95,16 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     String companyPhone = profile['phone'] ?? "";
     String companyEmail = profile['email'] ?? "";
     String companyGst = profile['gst_number'] ?? "";
+    String? logoBase64 = profile['logo_base64'];
+
+    pw.MemoryImage? logoImage;
+    if (logoBase64 != null && logoBase64.isNotEmpty) {
+      try {
+        logoImage = pw.MemoryImage(base64Decode(logoBase64));
+      } catch (e) {
+        print("Error decoding logo: $e");
+      }
+    }
 
     final pdf = pw.Document();
 
@@ -107,10 +119,19 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  // LEFT: Company Details
+                  // LEFT: Company Details & Logo
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
+                      // SHOW LOGO IF EXISTS
+                      if (logoImage != null)
+                        pw.Container(
+                          width: 80,
+                          height: 80,
+                          margin: const pw.EdgeInsets.only(bottom: 10),
+                          child: pw.Image(logoImage),
+                        ),
+
                       pw.Text(companyName,
                           style: pw.TextStyle(
                               fontSize: 24,
@@ -260,7 +281,21 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           appBar: AppBar(
               title: Text(t('generate_invoice')),
               backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white),
+              foregroundColor: Colors.white,
+              actions: [
+                // ✅ HOME BUTTON
+                IconButton(
+                  icon: const Icon(Icons.home),
+                  onPressed: () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const DashboardScreen()),
+                      (route) => false,
+                    );
+                  },
+                )
+              ]),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(

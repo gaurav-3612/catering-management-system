@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import '../api_service.dart';
 import 'dart:convert';
 import 'menu_detail_screen.dart';
-import '../translations.dart'; // Imports AppTranslations class
-import '../main.dart'; // Imports currentLanguage ValueNotifier
+import '../translations.dart';
+import '../main.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -24,7 +24,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   double _calculateItemWiseTotal(Map<String, dynamic> menuData) {
     double total = 0;
 
-    // Only look at specific food sections
     List<String> validSections = [
       "starters",
       "main_course",
@@ -44,8 +43,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Match? match = regExp.firstMatch(s);
 
           if (match != null) {
-            String costStr =
-                match.group(1)!.replaceAll(',', ''); // Remove commas
+            String costStr = match.group(1)!.replaceAll(',', '');
             total += double.tryParse(costStr) ?? 0;
           }
         }
@@ -171,7 +169,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               cuisine: menu['cuisine'],
                               menuId: menu['id'],
                               guestCount: menu['guest_count'],
-                              // ✅ FIX: Pass the Calculated AI Cost instead of the raw budget
                               budgetPerPlate: displayCost.toInt(),
                             ),
                           ),

@@ -305,14 +305,12 @@ class AppTranslations {
       'login_failed': 'தவறான பயனர் பெயர் அல்லது கடவுச்சொல்',
       'register_success': 'பதிவு வெற்றிகரமாக முடிந்தது! உள்நுழையவும்.',
       'app_title': 'கேட்டரிங் மேலாளர்',
-
       'dashboard_title': 'மேலாளர்',
       'business_overview': 'வணிக மேலோட்டம்',
       'total_events': 'மொத்த நிகழ்வுகள்',
       'guests_served': 'சேவை',
       'est_revenue': 'மதிப்பீடு',
       'top_cuisine': 'முக்கிய சமையல்',
-
       'quick_actions': 'விரைவு செயல்கள்',
       'create_menu': 'புதிய மெனு உருவாக்கு',
       'create_menu_desc': 'வாடிக்கையாளருக்கான AI மெனு உருவாக்கு',
@@ -321,44 +319,34 @@ class AppTranslations {
       'payment_ledger': 'கட்டண பதிவேடு',
       'payment_ledger_desc':
           'செலுத்திய மற்றும் நிலுவையில் உள்ள ரசீதுகளை கண்காணிக்க',
-
       'upcoming_orders': 'வரவிருக்கும் ஆர்டர்கள்',
       'mark_done': 'முடிந்தது',
-
-      // ✅ THIS WAS YOUR MAIN COMPLAINT — NOW INCLUDED
       'menu_generator_title': 'AI மெனு திட்டமிடுபவர்',
-
       'event_type': 'நிகழ்வு வகை',
       'cuisine': 'சமையல் வகை',
       'dietary': 'உணவு விருப்பம்',
       'guests': 'விருந்தினர்கள்',
       'budget': 'ஒரு பிளேட்டுக்கான பட்ஜெட்',
-
       'generate_btn': 'மெனு உருவாக்கு',
       'generating': 'உருவாக்கப்படுகிறது...',
       'suggested_menu': 'பரிந்துரைக்கப்பட்ட மெனு',
       'save_history': 'வரலாற்றில் சேமி',
       'add_item': 'உருப்படி சேர்க்க',
       'menu_saved': 'மெனு சேமிக்கப்பட்டது!',
-
       'starters': 'தொடக்க உணவுகள்',
       'main_course': 'முக்கிய உணவு',
       'breads': 'ரொட்டிகள்',
       'rice': 'சாதம்',
       'desserts': 'இனிப்புகள்',
       'beverages': 'பானங்கள்',
-
       'saved_menus': 'சேமிக்கப்பட்ட மெனுக்கள்',
       'history_title': 'சேமிக்கப்பட்ட மெனுக்கள்',
       'no_menus': 'சேமிக்கப்பட்ட மெனுக்கள் எதுவும் இல்லை.',
       'menu_deleted': 'மெனு நீக்கப்பட்டது',
-
       'create_quote': 'விலை மதிப்பீடு உருவாக்கு',
       'share_pdf': 'PDF பகிர்',
-
       'ingredients': 'பொருட்கள்',
       'instructions': 'செய்முறை',
-
       'cost_calculator': 'செலவு கணக்கீடு',
       'base_food_cost': 'அடிப்படை உணவு செலவு',
       'additional_charges': 'கூடுதல் கட்டணங்கள்',
@@ -368,46 +356,36 @@ class AppTranslations {
       'total_cost': 'மொத்த செலவு',
       'profit': 'லாபம்',
       'final_quote': 'இறுதி மதிப்பீடு',
-
       'save_quote_invoice': 'மதிப்பீடு மற்றும் ரசீது சேமி',
       'quote_saved': 'மதிப்பீடு வெற்றிகரமாக சேமிக்கப்பட்டது!',
-
       'generate_invoice': 'ரசீது உருவாக்கு',
       'event_date': 'நிகழ்வு தேதி',
       'client_name': 'வாடிக்கையாளர் பெயர்',
       'tax_gst': 'வரி % (GST)',
       'discount': 'தள்ளுபடி',
-
       'invoice_preview': 'ரசீது முன்னோட்டம்',
       'subtotal': 'உப மொத்தம்',
       'grand_total': 'மொத்த தொகை',
-
       'save_generate_pdf': 'சேமித்து PDF உருவாக்கு',
       'enter_client_name': 'வாடிக்கையாளர் பெயரை உள்ளிடவும்',
       'invoice_saved': 'ரசீது சேமிக்கப்பட்டு அறிவிப்பு திட்டமிடப்பட்டது!',
-
       'scan_qr': 'UPI மூலம் பணம் செலுத்த QR குறியீட்டை ஸ்கேன் செய்யவும்',
       'thank_you': 'எங்களுடன் வியாபாரம் செய்ததற்கு நன்றி!',
-
       'payment_ledger_title': 'கட்டண பதிவேடு',
       'export_csv': 'CSV ஏற்றுமதி',
       'no_invoices': 'ரசீதுகள் எதுவும் இல்லை',
-
       'paid': 'செலுத்தப்பட்டது',
       'due': 'நிலுவை',
       'pending': 'நிலுவையில்',
-
       'invoice_amount': 'ரசீது தொகை',
       'total_received': 'பெறப்பட்ட மொத்தம்',
       'balance_due': 'மீதமுள்ள தொகை',
-
       'history': 'வரலாறு',
       'no_payments': 'இதுவரை எந்த கட்டணமும் இல்லை.',
       'enter_payment': 'கட்டண தொகையை உள்ளிடவும்',
       'paid_full': 'முழுமையாக செலுத்தப்பட்டது',
       'received': 'பெறப்பட்டது',
       'unknown_client': 'தெரியாத வாடிக்கையாளர்',
-
       'switch_language': 'மொழி மாற்று',
     },
   };

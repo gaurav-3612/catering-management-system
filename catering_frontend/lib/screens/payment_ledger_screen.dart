@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../api_service.dart';
-import '../translations.dart'; // Import Translations
-import '../main.dart'; // Import currentLanguage
+import '../translations.dart';
+import '../main.dart';
 
 class PaymentLedgerScreen extends StatefulWidget {
   const PaymentLedgerScreen({super.key});

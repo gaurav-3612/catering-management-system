@@ -5,7 +5,7 @@ import '../main.dart';
 import 'menu_generator_screen.dart';
 import 'history_screen.dart';
 import 'payment_ledger_screen.dart';
-import 'login_screen.dart'; // ✅ Import Login Screen
+import 'login_screen.dart';
 import 'settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -32,7 +32,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadStats() async {
-    // ApiService automatically sends the currentUserId now!
     final data = await ApiService.fetchDashboardStats();
     final invoices = await ApiService.fetchInvoices();
 
@@ -54,7 +53,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return AppTranslations.get(lang, key);
   }
 
-  // ✅ LOGOUT FUNCTION
   void _logout() {
     // 1. Clear the Session ID
     ApiService.currentUserId = null;

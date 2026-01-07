@@ -21,7 +21,7 @@ class Event(SQLModel, table=True):
 class Menu(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     event_id: int = Field(foreign_key="event.id")
-    menu_json: str # We will store the AI response as a big string here [cite: 160]
+    menu_json: str 
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 # Function to create tables

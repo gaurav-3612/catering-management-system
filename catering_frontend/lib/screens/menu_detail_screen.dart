@@ -3,8 +3,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'pricing_screen.dart';
-import '../translations.dart'; // Import Translations
-import '../main.dart'; // Import currentLanguage
+import '../translations.dart';
+import '../main.dart';
 
 class MenuDetailScreen extends StatelessWidget {
   final Map<String, dynamic> fullMenu;

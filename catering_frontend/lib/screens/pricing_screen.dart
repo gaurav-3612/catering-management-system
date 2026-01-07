@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../api_service.dart';
 import 'invoice_screen.dart';
-import '../translations.dart'; // Import Translations
-import '../main.dart'; // Import currentLanguage
+import '../translations.dart';
+import '../main.dart';
 
 class PricingScreen extends StatefulWidget {
   final int menuId;

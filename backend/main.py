@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 import google.generativeai as genai
 from sqlmodel import SQLModel, Field, create_engine, Session, select
+from collections import Counter # ✅ Added for Cuisine Counting
 
 # --- CONFIGURATION ---
 GENAI_API_KEY = "AIzaSyDDNwfkYt0QCiT85I91zvBylSknAVHzYJw"
@@ -65,6 +66,7 @@ class CompanyProfile(SQLModel, table=True):
     phone: str
     email: str | None = None
     gst_number: str | None = None
+    logo_base64: str | None = None
 
 class UserLogin(BaseModel):
     username: str
@@ -103,7 +105,7 @@ class RegenerateRequest(BaseModel):
     dietary: str
     current_items: list[str] = []
 
-# --- MENU GENERATION (STRICT BUDGET MODE) ---
+# --- MENU GENERATION ---
 @app.post("/generate-menu")
 async def generate_menu(request: MenuRequest):
     prompt = f"""
@@ -123,7 +125,7 @@ async def generate_menu(request: MenuRequest):
     DIETARY RULES: 
     - If 'Veg', NO meat/egg/fish.
     - If 'Jain', NO onion/garlic/roots.
-    - Provide 3-5 items per category.
+    - Provide 3-5 items per category based on the budget.
 
     Output strictly in valid JSON format with keys: starters, main_course, breads, rice, desserts, beverages.
     Do not add markdown formatting.
@@ -136,7 +138,7 @@ async def generate_menu(request: MenuRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- REGENERATE SECTION (STRICT PRICING MODE) ---
+# --- REGENERATE SECTION ---
 @app.post("/regenerate-section")
 async def regenerate_section(req: RegenerateRequest):
     prompt = f"""
@@ -190,15 +192,55 @@ def delete_menu(menu_id: int):
         session.commit()
         return {"status": "deleted"}
 
+# ✅ UPDATED DASHBOARD STATS LOGIC
 @app.get("/dashboard-stats")
 def get_dashboard_stats(user_id: int = Query(...)):
     with Session(engine) as session:
         menus = session.exec(select(SavedMenu).where(SavedMenu.user_id == user_id)).all()
+        
+        # 1. Basic Counts
+        total_events = len(menus)
+        total_guests = sum(m.guest_count for m in menus)
+        
+        # 2. Revenue Logic (Budget * Guests)
+        total_revenue = sum(m.budget * m.guest_count for m in menus)
+        
+        # Formatting Revenue (0.5 L for less than 1L)
+        if total_revenue == 0:
+            revenue_str = "₹0"
+        elif total_revenue < 100000:
+            # Convert to Lakhs (e.g., 50000 -> 0.50 L)
+            val = total_revenue / 100000
+            revenue_str = f"₹{val:.2f} L"
+        elif total_revenue < 10000000:
+            # Convert to Lakhs (e.g., 150000 -> 1.5 L)
+            val = total_revenue / 100000
+            revenue_str = f"₹{val:.1f} L"
+        else:
+            # Convert to Crores
+            val = total_revenue / 10000000
+            revenue_str = f"₹{val:.2f} Cr"
+
+        # 3. Top Cuisine Logic
+        cuisines = [m.cuisine for m in menus]
+        if not cuisines:
+            top_cuisine = "Multi-Cuisine"
+        else:
+            # Count occurrences
+            counts = Counter(cuisines)
+            most_common = counts.most_common()
+            
+            # Check for Tie
+            if len(most_common) > 1 and most_common[0][1] == most_common[1][1]:
+                top_cuisine = "Multi-Cuisine"
+            else:
+                top_cuisine = most_common[0][0]
+
         return {
-            "total_events": len(menus),
-            "total_guests": sum(m.guest_count for m in menus),
-            "projected_revenue": "₹0", 
-            "top_cuisine": "Multi-Cuisine"
+            "total_events": total_events,
+            "total_guests": total_guests,
+            "projected_revenue": revenue_str, 
+            "top_cuisine": top_cuisine
         }
 
 @app.post("/save-pricing")
@@ -259,6 +301,7 @@ def save_profile(profile: CompanyProfile):
             existing_profile.phone = profile.phone
             existing_profile.email = profile.email
             existing_profile.gst_number = profile.gst_number
+            existing_profile.logo_base64 = profile.logo_base64
             session.add(existing_profile)
         else:
             session.add(profile)

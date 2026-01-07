@@ -1,4 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../api_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -15,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _emailCtrl = TextEditingController();
   final _gstCtrl = TextEditingController();
 
+  String? _base64Logo; // To store image string
   bool _isLoading = false;
 
   @override
@@ -33,9 +37,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _phoneCtrl.text = data['phone'] ?? "";
         _emailCtrl.text = data['email'] ?? "";
         _gstCtrl.text = data['gst_number'] ?? "";
+        _base64Logo = data['logo_base64']; // Load existing logo
       });
     }
     setState(() => _isLoading = false);
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+    if (image != null) {
+      final bytes = await File(image.path).readAsBytes();
+      setState(() {
+        _base64Logo = base64Encode(bytes); // Convert to String
+      });
+    }
   }
 
   void _save() async {
@@ -53,11 +70,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         phone: _phoneCtrl.text,
         email: _emailCtrl.text,
         gst: _gstCtrl.text,
+        logoBase64: _base64Logo, // Save Logo
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text("Profile Saved!"), backgroundColor: Colors.green));
-        Navigator.pop(context); // Go back
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -82,17 +100,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  const Icon(Icons.business,
-                      size: 80, color: Colors.deepPurple),
-                  const SizedBox(height: 20),
-                  const Text(
-                    "Invoice Details",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  GestureDetector(
+                    onTap: _pickImage,
+                    child: CircleAvatar(
+                      radius: 50,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: _base64Logo != null
+                          ? MemoryImage(base64Decode(_base64Logo!))
+                          : null,
+                      child: _base64Logo == null
+                          ? const Icon(Icons.add_a_photo,
+                              size: 40, color: Colors.grey)
+                          : null,
+                    ),
                   ),
-                  const Text(
-                    "These details will appear on your PDF Invoices.",
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  const SizedBox(height: 10),
+                  const Text("Tap to add Company Logo"),
                   const SizedBox(height: 20),
                   _input("Company Name", _nameCtrl, Icons.store),
                   _input("Address", _addrCtrl, Icons.location_on),
