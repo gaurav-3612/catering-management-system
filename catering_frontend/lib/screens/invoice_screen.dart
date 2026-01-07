@@ -4,8 +4,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../api_service.dart';
 import '../notification_service.dart';
-import '../translations.dart'; // Import Translations
-import '../main.dart'; // Import currentLanguage
+import '../translations.dart';
+import '../main.dart';
 
 class InvoiceScreen extends StatefulWidget {
   final int menuId;
@@ -28,13 +28,11 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   final TextEditingController _discountController =
       TextEditingController(text: "0");
 
-  // FocusNode to detect when user taps the Discount field
   final FocusNode _discountFocusNode = FocusNode();
 
   double _grandTotal = 0;
   DateTime _selectedDate = DateTime.now();
 
-  // --- HELPER FOR TRANSLATIONS ---
   String t(String key) {
     return AppTranslations.get(currentLanguage.value, key);
   }
@@ -44,7 +42,6 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     super.initState();
     _calculateTotal();
 
-    // Listener to auto-clear "0" when user taps discount field
     _discountFocusNode.addListener(() {
       if (_discountFocusNode.hasFocus && _discountController.text == "0") {
         _discountController.clear();
@@ -54,7 +51,6 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
 
   @override
   void dispose() {
-    // Always dispose FocusNodes and Controllers
     _discountFocusNode.dispose();
     _clientController.dispose();
     _taxController.dispose();
@@ -63,7 +59,6 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   }
 
   void _calculateTotal() {
-    // FIX: Using tryParse prevents crashes when fields are empty
     double tax = double.tryParse(_taxController.text) ?? 0;
     double discount = double.tryParse(_discountController.text) ?? 0;
 
@@ -87,8 +82,18 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
-  // --- PDF GENERATION (Kept in English for Font Safety) ---
+  // --- PDF GENERATION (UPDATED WITH COMPANY PROFILE) ---
   Future<void> _generatePdfInvoice() async {
+    // 1. Fetch Company Profile
+    final profile = await ApiService.fetchCompanyProfile();
+
+    // 2. Set Default Values if profile is empty
+    String companyName = profile['company_name'] ?? "AI Catering Planner";
+    String companyAddress = profile['address'] ?? "Generated via App";
+    String companyPhone = profile['phone'] ?? "";
+    String companyEmail = profile['email'] ?? "";
+    String companyGst = profile['gst_number'] ?? "";
+
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -97,38 +102,63 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // 1. HEADER WITH QR CODE
+              // --- HEADER SECTION ---
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
+                  // LEFT: Company Details
                   pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(companyName,
+                          style: pw.TextStyle(
+                              fontSize: 24,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.deepPurple)),
+                      pw.SizedBox(height: 5),
+                      pw.Text(companyAddress),
+                      if (companyPhone.isNotEmpty)
+                        pw.Text("Phone: $companyPhone"),
+                      if (companyEmail.isNotEmpty)
+                        pw.Text("Email: $companyEmail"),
+                      if (companyGst.isNotEmpty)
+                        pw.Text("GSTIN: $companyGst",
+                            style:
+                                pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    ],
+                  ),
+
+                  // RIGHT: Invoice Label
+                  pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
                       children: [
                         pw.Text("INVOICE",
                             style: pw.TextStyle(
-                                fontSize: 40, fontWeight: pw.FontWeight.bold)),
+                                fontSize: 30,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColors.grey)),
+                        pw.SizedBox(height: 5),
                         pw.Text(
                             "Date: ${_selectedDate.toString().split(' ')[0]}"),
                         pw.Text("Client: ${_clientController.text}",
-                            style: const pw.TextStyle(fontSize: 18)),
-                      ]),
-                  // QR CODE WIDGET
-                  pw.BarcodeWidget(
-                    barcode: pw.Barcode.qrCode(),
-                    data:
-                        "upi://pay?pa=catering@upi&pn=CateringService&am=$_grandTotal&cu=INR", // Simulated UPI Link
-                    width: 80,
-                    height: 80,
-                  ),
+                            style:
+                                pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      ])
                 ],
               ),
 
-              pw.Divider(),
+              pw.SizedBox(height: 20),
+              pw.Divider(thickness: 2),
               pw.SizedBox(height: 20),
 
-              // 2. INVOICE TABLE
+              // --- INVOICE ITEMS TABLE ---
               pw.Table.fromTextArray(
                 context: context,
+                headerStyle: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                headerDecoration:
+                    const pw.BoxDecoration(color: PdfColors.deepPurple),
                 data: <List<String>>[
                   <String>['Description', 'Amount'],
                   <String>[
@@ -146,13 +176,31 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   ],
                 ],
               ),
-              pw.SizedBox(height: 20),
-              pw.Text("Scan QR Code to Pay via UPI",
-                  style:
-                      const pw.TextStyle(fontSize: 12, color: PdfColors.grey)),
-              pw.Text("Thank you for your business!",
-                  style:
-                      const pw.TextStyle(fontSize: 12, color: PdfColors.grey)),
+
+              pw.SizedBox(height: 30),
+
+              // --- FOOTER WITH QR ---
+              pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text("Terms & Conditions:",
+                              style:
+                                  pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          pw.Text("1. Please pay within 7 days."),
+                          pw.Text("2. Thank you for your business!"),
+                        ]),
+                    // QR Code for UPI
+                    pw.BarcodeWidget(
+                      barcode: pw.Barcode.qrCode(),
+                      data:
+                          "upi://pay?pa=$companyPhone@upi&pn=${Uri.encodeComponent(companyName)}&am=$_grandTotal&cu=INR",
+                      width: 70,
+                      height: 70,
+                    ),
+                  ])
             ],
           );
         },
@@ -164,17 +212,14 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         filename: 'invoice_${_clientController.text}.pdf');
   }
 
-  // Save to DB and Generate PDF
   void _finalizeInvoice() async {
-    // 1. Validation
     if (_clientController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(t('enter_client_name')))); // Translated
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t('enter_client_name'))));
       return;
     }
 
     try {
-      // 2. Save Invoice to Database
       await ApiService.saveInvoice(
         menuId: widget.menuId,
         clientName: _clientController.text,
@@ -185,7 +230,6 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         eventDate: "${_selectedDate.toLocal()}".split(' ')[0],
       );
 
-      // 3. Schedule Notification
       await NotificationService.scheduleEventDayReminder(
         title: "Catering Reminder",
         body: "Event for ${_clientController.text} is coming up!",
@@ -194,12 +238,11 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(t('invoice_saved')), // Translated
+          content: Text(t('invoice_saved')),
           backgroundColor: Colors.green,
         ),
       );
 
-      // 4. Generate PDF
       await _generatePdfInvoice();
     } catch (e) {
       print("ERROR SAVING INVOICE: $e");
@@ -210,23 +253,21 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Listen to language changes
     return ValueListenableBuilder<String>(
       valueListenable: currentLanguage,
       builder: (context, lang, child) {
         return Scaffold(
           appBar: AppBar(
-              title: Text(t('generate_invoice')), // Translated
+              title: Text(t('generate_invoice')),
               backgroundColor: Colors.deepPurple,
               foregroundColor: Colors.white),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                // Date Picker Row
                 Row(
                   children: [
-                    Text("${t('event_date')}: ", // Translated
+                    Text("${t('event_date')}: ",
                         style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.bold)),
                     TextButton.icon(
@@ -240,11 +281,10 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-
                 TextField(
                   controller: _clientController,
                   decoration: InputDecoration(
-                      labelText: t('client_name'), // Translated
+                      labelText: t('client_name'),
                       border: const OutlineInputBorder(),
                       prefixIcon: const Icon(Icons.person)),
                 ),
@@ -257,7 +297,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
                         decoration: InputDecoration(
-                            labelText: t('tax_gst'), // Translated
+                            labelText: t('tax_gst'),
                             border: const OutlineInputBorder()),
                         onChanged: (val) => _calculateTotal(),
                       ),
@@ -270,7 +310,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
                         decoration: InputDecoration(
-                            labelText: t('discount'), // Translated
+                            labelText: t('discount'),
                             border: const OutlineInputBorder()),
                         onChanged: (val) => _calculateTotal(),
                       ),
@@ -278,31 +318,24 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   ],
                 ),
                 const SizedBox(height: 30),
-
-                // Preview Card
                 Container(
                   padding: const EdgeInsets.all(20),
                   color: Colors.grey.shade100,
                   child: Column(
                     children: [
-                      Text(t('invoice_preview'), // Translated
+                      Text(t('invoice_preview'),
                           style: const TextStyle(fontWeight: FontWeight.bold)),
                       const Divider(),
                       _row(t('subtotal'),
-                          "₹${widget.baseAmount.toStringAsFixed(0)}"), // Translated
-
-                      // Using tryParse logic here in the UI display too
-                      _row(
-                          t('tax_gst'), // Translated
+                          "₹${widget.baseAmount.toStringAsFixed(0)}"),
+                      _row(t('tax_gst'),
                           "+ ₹${(widget.baseAmount * ((double.tryParse(_taxController.text) ?? 0) / 100)).toStringAsFixed(0)}",
                           color: Colors.red),
-
-                      _row(t('discount'),
-                          "- ₹${_discountController.text}", // Translated
+                      _row(t('discount'), "- ₹${_discountController.text}",
                           color: Colors.green),
                       const Divider(),
                       _row(t('grand_total'),
-                          "₹${_grandTotal.toStringAsFixed(0)}", // Translated
+                          "₹${_grandTotal.toStringAsFixed(0)}",
                           isBold: true),
                     ],
                   ),
@@ -314,7 +347,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   child: ElevatedButton.icon(
                     onPressed: _finalizeInvoice,
                     icon: const Icon(Icons.picture_as_pdf),
-                    label: Text(t('save_generate_pdf')), // Translated
+                    label: Text(t('save_generate_pdf')),
                     style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.deepPurple,
                         foregroundColor: Colors.white),

@@ -6,6 +6,7 @@ import 'menu_generator_screen.dart';
 import 'history_screen.dart';
 import 'payment_ledger_screen.dart';
 import 'login_screen.dart'; // ✅ Import Login Screen
+import 'settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -111,6 +112,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 },
               ),
               const SizedBox(width: 10),
+              // SETTINGS BUTTON
+              IconButton(
+                icon: const Icon(Icons.settings),
+                tooltip: "Settings",
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  );
+                },
+              ),
 
               // ✅ LOGOUT BUTTON
               IconButton(

@@ -14,7 +14,7 @@ class AppTranslations {
       'login_failed': 'Invalid username or password',
       'register_success': 'Registration Successful! Please Login.',
       'app_title': 'Catering Manager',
-      'dashboard_title': 'Manager Dashboard',
+      'dashboard_title': 'Dashboard',
       'business_overview': 'Business Overview',
       'total_events': 'Total Events',
       'guests_served': 'Guests Served',
@@ -306,7 +306,7 @@ class AppTranslations {
       'register_success': 'பதிவு வெற்றிகரமாக முடிந்தது! உள்நுழையவும்.',
       'app_title': 'கேட்டரிங் மேலாளர்',
 
-      'dashboard_title': 'மேலாளர் டாஷ்போர்ட்',
+      'dashboard_title': 'மேலாளர்',
       'business_overview': 'வணிக மேலோட்டம்',
       'total_events': 'மொத்த நிகழ்வுகள்',
       'guests_served': 'சேவை',

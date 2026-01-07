@@ -321,4 +321,87 @@ class ApiService {
         Uri.parse('$baseUrl/update-order-status?invoice_id=$id&status=$status');
     await http.post(url);
   }
+
+  // --- 13. COMPANY PROFILE ---
+  static Future<void> saveCompanyProfile({
+    required String companyName,
+    required String address,
+    required String phone,
+    String? email,
+    String? gst,
+  }) async {
+    if (currentUserId == null) throw Exception("User not logged in");
+
+    final url = Uri.parse('$baseUrl/save-profile');
+    final body = {
+      "user_id": currentUserId,
+      "company_name": companyName,
+      "address": address,
+      "phone": phone,
+      "email": email ?? "",
+      "gst_number": gst ?? ""
+    };
+
+    final response = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception("Failed to save profile");
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchCompanyProfile() async {
+    if (currentUserId == null) return {};
+
+    final url = Uri.parse('$baseUrl/get-profile?user_id=$currentUserId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        return {}; // Return empty if failed or no profile
+      }
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // --- 14. REGENERATE SECTION ---
+  static Future<List<String>> regenerateSection({
+    required String section,
+    required String eventType,
+    required String cuisine,
+    required String dietary,
+    required List<String> currentItems,
+  }) async {
+    final url = Uri.parse('$baseUrl/regenerate-section');
+
+    final body = {
+      "section": section,
+      "event_type": eventType,
+      "cuisine": cuisine,
+      "dietary": dietary,
+      "current_items": currentItems
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<String>.from(data['new_items']);
+      } else {
+        throw Exception("Failed to regenerate");
+      }
+    } catch (e) {
+      throw Exception("Error: $e");
+    }
+  }
 }

@@ -1,7 +1,7 @@
-import 'package:catering_frontend/screens/history_screen.dart';
 import 'package:flutter/material.dart';
 import '../api_service.dart';
-import 'invoice_screen.dart'; // Import Invoice Screen
+import 'invoice_screen.dart';
+import 'history_screen.dart';
 import '../translations.dart';
 import '../main.dart';
 
@@ -80,6 +80,44 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         _isLoading = false;
       });
       print("Menu Generation Error: $e");
+    }
+  }
+
+  // ✅ NEW FEATURE: REGENERATE SECTION
+  void _regenerateSectionItems(String sectionKey) async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Convert current dynamic list to String list for the API
+      List<String> currentItems = (_generatedMenu![sectionKey] as List)
+          .map((e) => e.toString())
+          .toList();
+
+      List<String> newItems = await ApiService.regenerateSection(
+        section: sectionKey,
+        eventType: _selectedEvent,
+        cuisine: _selectedCuisine,
+        dietary: _selectedDiet,
+        currentItems: currentItems,
+      );
+
+      setState(() {
+        _generatedMenu![sectionKey] = newItems;
+        _isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text("$sectionKey Refreshed!"),
+            backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text("Failed to refresh: $e"),
+            backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -315,7 +353,6 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => InvoiceScreen(
-                                    // FIXED LINE: Removed menuData here
                                     menuId: _savedMenuId!,
                                     baseAmount: (double.tryParse(
                                                 _guestsController.text) ??
@@ -354,9 +391,21 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ExpansionTile(
-        title: Text(title,
-            style: const TextStyle(
-                fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+        // UPDATED TITLE WITH REFRESH BUTTON
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(title,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+            if (_generatedMenu != null) // Only show if menu exists
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.orange),
+                tooltip: "Regenerate this section",
+                onPressed: () => _regenerateSectionItems(jsonKey),
+              ),
+          ],
+        ),
         initiallyExpanded: items.isNotEmpty,
         children: [
           ...items.asMap().entries.map((entry) {
