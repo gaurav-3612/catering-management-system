@@ -2,11 +2,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // Use 10.0.2.2 for Android Emulator.
-  // If using a real device, use your PC's IP (e.g., 10.125.24.64)
-  static const String baseUrl = "http://192.168.43.192:8000";
+  static const String baseUrl = "http://10.221.71.64:8000";
 
-  // --- 1. GENERATE MENU (FIXED: Uses budget_per_plate) ---
+  // --- 1. GENERATE MENU ---
   static Future<Map<String, dynamic>> generateMenu({
     required String eventType,
     required String cuisine,
@@ -16,7 +14,7 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/generate-menu');
 
-    // CRITICAL FIX: Changed 'budget' to 'budget_per_plate' to match backend
+    // Using budget_per_plate as per your request
     final Map<String, dynamic> requestBody = {
       "event_type": eventType,
       "cuisine": cuisine,
@@ -35,7 +33,6 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final decodedResponse = jsonDecode(response.body);
-        // Clean up the response if AI adds markdown
         String menuString = decodedResponse['menu_data'];
         menuString =
             menuString.replaceAll('```json', '').replaceAll('```', '').trim();
@@ -48,8 +45,9 @@ class ApiService {
     }
   }
 
-  // --- 2. SAVE MENU ---
-  static Future<void> saveMenuToDatabase({
+  // --- 2. SAVE MENU (CRITICAL FIX) ---
+  // I changed 'void' to 'Map<String, dynamic>' so we can get the NEW ID.
+  static Future<Map<String, dynamic>> saveMenuToDatabase({
     required String eventType,
     required String cuisine,
     required int guestCount,
@@ -74,7 +72,10 @@ class ApiService {
         body: jsonEncode(body),
       );
 
-      if (response.statusCode != 200) {
+      if (response.statusCode == 200) {
+        // RETURN THE RESPONSE (This contains the New ID)
+        return jsonDecode(response.body);
+      } else {
         throw Exception("Failed to save: ${response.body}");
       }
     } catch (e) {
@@ -82,7 +83,7 @@ class ApiService {
     }
   }
 
-  // --- 3. FETCH SAVED MENUS (HISTORY) ---
+  // --- 3. FETCH SAVED MENUS ---
   static Future<List<dynamic>> fetchSavedMenus() async {
     final url = Uri.parse('$baseUrl/get-menus');
     try {
@@ -168,7 +169,7 @@ class ApiService {
     }
   }
 
-  // --- 7. SAVE INVOICE (Includes Event Date & Status) ---
+  // --- 7. SAVE INVOICE ---
   static Future<void> saveInvoice({
     required int menuId,
     required String clientName,

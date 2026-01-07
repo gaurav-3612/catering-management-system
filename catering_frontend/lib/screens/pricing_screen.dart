@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import '../api_service.dart';
 import 'invoice_screen.dart';
+import '../translations.dart'; // Import Translations
+import '../main.dart'; // Import currentLanguage
 
 class PricingScreen extends StatefulWidget {
   final int menuId;
   final int guestCount;
-  final int baseBudgetPerPlate;
+  final double baseFoodCost;
 
   const PricingScreen({
     super.key,
     required this.menuId,
     required this.guestCount,
-    required this.baseBudgetPerPlate,
+    required this.baseFoodCost,
   });
 
   @override
@@ -39,9 +41,8 @@ class _PricingScreenState extends State<PricingScreen> {
   }
 
   void _calculateTotal() {
-    // 1. Base Food Cost (Guests * Budget)
-    double foodCost =
-        (widget.guestCount * widget.baseBudgetPerPlate).toDouble();
+    // 1. Base Food Cost
+    double foodCost = widget.baseFoodCost;
 
     // 2. Add Extras
     double labor = double.tryParse(_laborController.text) ?? 0;
@@ -60,6 +61,9 @@ class _PricingScreenState extends State<PricingScreen> {
   }
 
   void _saveQuote() async {
+    // Helper to get current language for SnackBar
+    String t(String key) => AppTranslations.get(currentLanguage.value, key);
+
     try {
       await ApiService.savePricing(
         menuId: widget.menuId,
@@ -70,115 +74,138 @@ class _PricingScreenState extends State<PricingScreen> {
         finalAmount: _finalQuote,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Quote Saved Successfully!"),
-          backgroundColor: Colors.green));
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => InvoiceScreen(
-            menuId: widget.menuId,
-            baseAmount: _finalQuote, // Pass the calculated quote
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(t('quote_saved')), // Translated
+            backgroundColor: Colors.green));
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => InvoiceScreen(
+              menuId: widget.menuId,
+              baseAmount: _finalQuote, // Pass the calculated quote to Invoice
+            ),
           ),
-        ),
-      );
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-          title: const Text("Cost Calculator"),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- SECTION 1: BASE COST ---
-            _buildSummaryCard(
-                "Base Food Cost",
-                "₹${widget.guestCount * widget.baseBudgetPerPlate}",
-                Icons.restaurant),
+    // Listen to language changes
+    return ValueListenableBuilder<String>(
+      valueListenable: currentLanguage,
+      builder: (context, lang, child) {
+        // Helper
+        String t(String key) => AppTranslations.get(lang, key);
 
-            const SizedBox(height: 20),
-
-            // --- SECTION 2: EXTRAS INPUT ---
-            const Text("Additional Charges",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 10),
-            Row(
+        return Scaffold(
+          appBar: AppBar(
+              title: Text(t('cost_calculator')), // Translated
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(child: _buildInput("Labor Cost", _laborController)),
-                const SizedBox(width: 10),
-                Expanded(child: _buildInput("Transport", _transportController)),
+                // --- SECTION 1: BASE COST ---
+                _buildSummaryCard(
+                    t('base_food_cost'), // Translated
+                    "₹${widget.baseFoodCost.toStringAsFixed(0)}",
+                    Icons.restaurant),
+
+                const SizedBox(height: 20),
+
+                // --- SECTION 2: EXTRAS INPUT ---
+                Text(t('additional_charges'), // Translated
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 18)),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                        child: _buildInput(
+                            t('labor_cost'), _laborController)), // Translated
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: _buildInput(t('transport_cost'),
+                            _transportController)), // Translated
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // --- SECTION 3: PROFIT SLIDER ---
+                Text(
+                    "${t('profit_margin')}: ${_profitMargin.round()}%", // Translated
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 18)),
+                Slider(
+                  value: _profitMargin,
+                  min: 0,
+                  max: 100,
+                  divisions: 20,
+                  label: "${_profitMargin.round()}%",
+                  activeColor: Colors.deepPurple,
+                  onChanged: (val) {
+                    setState(() {
+                      _profitMargin = val;
+                    });
+                    _calculateTotal();
+                  },
+                ),
+
+                const Divider(thickness: 2, height: 40),
+
+                // --- SECTION 4: FINAL QUOTE ---
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                      color: Colors.deepPurple.shade50,
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.deepPurple.shade200)),
+                  child: Column(
+                    children: [
+                      _buildRow(t('total_cost'),
+                          "₹${_totalCost.toStringAsFixed(0)}"), // Translated
+                      _buildRow(
+                          "${t('profit')} (${_profitMargin.round()}%)", // Translated
+                          "+ ₹${(_finalQuote - _totalCost).toStringAsFixed(0)}",
+                          isGreen: true),
+                      const Divider(),
+                      _buildRow(t('final_quote'),
+                          "₹${_finalQuote.toStringAsFixed(0)}", // Translated
+                          isBold: true),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _saveQuote,
+                    icon: const Icon(Icons.save_alt),
+                    label: Text(t('save_quote_invoice')), // Translated
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white),
+                  ),
+                )
               ],
             ),
-
-            const SizedBox(height: 20),
-
-            // --- SECTION 3: PROFIT SLIDER ---
-            Text("Profit Margin: ${_profitMargin.round()}%",
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            Slider(
-              value: _profitMargin,
-              min: 0,
-              max: 100,
-              divisions: 20,
-              label: "${_profitMargin.round()}%",
-              activeColor: Colors.deepPurple,
-              onChanged: (val) {
-                setState(() {
-                  _profitMargin = val;
-                });
-                _calculateTotal();
-              },
-            ),
-
-            const Divider(thickness: 2, height: 40),
-
-            // --- SECTION 4: FINAL QUOTE ---
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                  color: Colors.deepPurple.shade50,
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: Colors.deepPurple.shade200)),
-              child: Column(
-                children: [
-                  _buildRow("Total Cost", "₹${_totalCost.toStringAsFixed(0)}"),
-                  _buildRow("Profit (${_profitMargin.round()}%)",
-                      "+ ₹${(_finalQuote - _totalCost).toStringAsFixed(0)}",
-                      isGreen: true),
-                  const Divider(),
-                  _buildRow("Final Quote", "₹${_finalQuote.toStringAsFixed(0)}",
-                      isBold: true),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _saveQuote,
-                icon: const Icon(Icons.save_alt),
-                label: const Text("Save Quote"),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white),
-              ),
-            )
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

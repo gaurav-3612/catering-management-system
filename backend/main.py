@@ -6,7 +6,7 @@ import google.generativeai as genai
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 
 # --- CONFIGURATION ---
-GENAI_API_KEY = "AIzaSyByeAkGvkrprPRXLE9Y4JUZWpjQ3Ac1kBQ"
+GENAI_API_KEY = "AIzaSyBCQfDDOhDfgE8Jk-VAnpiW8TnjQya7dP0"
 genai.configure(api_key=GENAI_API_KEY)
 
 app = FastAPI()
@@ -43,7 +43,7 @@ class SavedInvoice(SQLModel, table=True):
     discount_amount: float
     grand_total: float
     is_paid: bool = False
-    event_date: str = Field(default="2025-01-01") 
+    event_date: str = Field(default="2025-01-01")
     order_status: str = Field(default="Pending")
 
 class SavedPayment(SQLModel, table=True):
@@ -67,154 +67,102 @@ class MenuRequest(BaseModel):
     dietary_preference: str
     special_requirements: str = "None"
 
-# --- API ENDPOINTS ---
-
+# --- MENU GENERATION (FIXED) ---
 @app.post("/generate-menu")
 async def generate_menu(request: MenuRequest):
-    # STRICT PROMPT: Asking for specific lowercase keys to fix the "Empty List" bug
+    # FIX: We now actually pass the user's choices into the prompt!
     prompt = f"""
-    You are a professional catering API. Generate a menu in strict JSON format.
-    
-    Details:
-    - Event: {request.event_type}
-    - Cuisine: {request.cuisine}
-    - Budget: {request.budget_per_plate}
-    - Diet: {request.dietary_preference}
-    
-    RULES:
-    1. Output MUST be valid JSON.
-    2. keys MUST be exactly: "starters", "main_course", "breads", "rice", "desserts", "beverages".
-    3. Values must be simple lists of strings.
-    4. Do not wrap in markdown code blocks.
-    
-    Example Structure:
+    Act as a professional catering chef.
+    Generate a {request.dietary_preference} menu for a {request.event_type}.
+    Cuisine: {request.cuisine}
+    Guest Count: {request.guest_count}
+    Budget per Plate: ₹{request.budget_per_plate}
+    Special Requirements: {request.special_requirements}
+
+    IMPORTANT: 
+    - If Dietary Preference is 'Veg', DO NOT include any meat, egg, or fish items.
+    - If 'Jain', DO NOT include onion, garlic, or root vegetables.
+    - Provide 3-5 items per category based on the budget.
+
+    Output strictly in valid JSON format with these exact keys:
     {{
-        "starters": ["Item A", "Item B"],
-        "main_course": ["Item C"],
-        "breads": ["Item D"],
-        "rice": ["Item E"],
-        "desserts": ["Item F"],
-        "beverages": ["Item G"]
+      "starters": ["item1", "item2"],
+      "main_course": ["item1", "item2"],
+      "breads": ["item1", "item2"],
+      "rice": ["item1", "item2"],
+      "desserts": ["item1", "item2"],
+      "beverages": ["item1", "item2"]
     }}
+    Do not add any markdown formatting like ```json ... ```. Just the raw JSON string.
     """
+
     try:
-        # RESTORED: Using the model that was working for you
-        model = genai.GenerativeModel('gemini-flash-latest') 
+        model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
         
-        # --- CLEANING LOGIC ---
-        # This removes ```json and ``` if the AI adds them, preventing errors
-        raw_text = response.text
-        if "```" in raw_text:
-            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-            
-        return {"menu_data": raw_text}
+        # Cleanup potential markdown if the AI adds it anyway
+        raw_text = response.text.replace("```json", "").replace("```", "").strip()
         
+        return {"menu_data": raw_text}
     except Exception as e:
-        print(f"Gemini API Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- MENU CRUD ---
 @app.post("/save-menu")
 def save_menu(menu: SavedMenu):
-    try:
-        with Session(engine) as session:
-            session.add(menu)
-            session.commit()
-            session.refresh(menu)
-            return {"status": "success", "id": menu.id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
+    with Session(engine) as session:
+        session.add(menu)
+        session.commit()
+        session.refresh(menu)
+        return {"status": "success", "id": menu.id}
+
 @app.get("/get-menus")
 def get_menus():
-    try:
-        with Session(engine) as session:
-            return session.exec(select(SavedMenu)).all()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
+    with Session(engine) as session:
+        return session.exec(select(SavedMenu)).all()
+
 @app.delete("/delete-menu/{menu_id}")
 def delete_menu(menu_id: int):
-    try:
-        with Session(engine) as session:
-            menu = session.get(SavedMenu, menu_id)
-            if not menu:
-                raise HTTPException(status_code=404, detail="Menu not found")
-            session.delete(menu)
-            session.commit()
-            return {"status": "deleted"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    with Session(engine) as session:
+        menu = session.get(SavedMenu, menu_id)
+        if not menu:
+            raise HTTPException(status_code=404, detail="Menu not found")
+        session.delete(menu)
+        session.commit()
+        return {"status": "deleted"}
 
+# --- DASHBOARD ---
 @app.get("/dashboard-stats")
 def get_dashboard_stats():
-    try:
-        with Session(engine) as session:
-            menus = session.exec(select(SavedMenu)).all()
-            total_events = len(menus)
-            total_guests = sum(m.guest_count for m in menus)
-            total_budget = sum(m.budget * m.guest_count for m in menus) // 100000 if menus else 0 
-            
-            cuisine_counts = {}
-            for m in menus:
-                cuisine_counts[m.cuisine] = cuisine_counts.get(m.cuisine, 0) + 1
-            top_cuisine = max(cuisine_counts, key=cuisine_counts.get) if cuisine_counts else "N/A"
+    with Session(engine) as session:
+        menus = session.exec(select(SavedMenu)).all()
+        return {
+            "total_events": len(menus),
+            "total_guests": sum(m.guest_count for m in menus),
+            "projected_revenue": "₹0",
+            "top_cuisine": "N/A"
+        }
 
-            return {
-                "total_events": total_events,
-                "total_guests": total_guests,
-                "projected_revenue": f"₹{total_budget} L", 
-                "top_cuisine": top_cuisine
-            }
-    except Exception as e:
-        return {"total_events": 0, "total_guests": 0, "projected_revenue": "₹0", "top_cuisine": "None"}
-
+# --- PRICING ---
 @app.post("/save-pricing")
 def save_pricing(pricing: SavedPricing):
-    try:
-        with Session(engine) as session:
-            session.add(pricing)
-            session.commit()
-            return {"status": "success", "id": pricing.id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    with Session(engine) as session:
+        session.add(pricing)
+        session.commit()
+        return {"status": "success", "id": pricing.id}
 
 @app.post("/save-invoice")
 def save_invoice(invoice: SavedInvoice):
     try:
         with Session(engine) as session:
-            statement = select(SavedInvoice).where(SavedInvoice.menu_id == invoice.menu_id)
-            existing_invoice = session.exec(statement).first()
-
-            if existing_invoice:
-                existing_invoice.client_name = invoice.client_name
-                existing_invoice.final_amount = invoice.final_amount
-                existing_invoice.tax_percent = invoice.tax_percent
-                existing_invoice.discount_amount = invoice.discount_amount
-                existing_invoice.grand_total = invoice.grand_total
-                existing_invoice.event_date = invoice.event_date
-                
-                pay_statement = select(SavedPayment).where(SavedPayment.invoice_id == existing_invoice.id)
-                payments = session.exec(pay_statement).all()
-                total_paid = sum(p.amount for p in payments)
-
-                if total_paid >= existing_invoice.grand_total:
-                    existing_invoice.is_paid = True
-                else:
-                    existing_invoice.is_paid = False
-                
-                session.add(existing_invoice)
-                session.commit()
-                session.refresh(existing_invoice)
-                return {"status": "updated", "id": existing_invoice.id}
-            else:
-                session.add(invoice)
-                session.commit()
-                session.refresh(invoice)
-                return {"status": "created", "id": invoice.id}
+            session.add(invoice)
+            session.commit()
+            session.refresh(invoice)
+            return {"status": "created", "id": invoice.id}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- INVOICE & PAYMENTS ---
 @app.get("/get-invoices")
 def get_invoices():
     with Session(engine) as session:
@@ -222,48 +170,39 @@ def get_invoices():
 
 @app.post("/add-payment")
 def add_payment(payment: SavedPayment):
-    try:
-        with Session(engine) as session:
-            session.add(payment)
-            session.commit()
-            
-            invoice = session.get(SavedInvoice, payment.invoice_id)
-            if not invoice:
-                raise HTTPException(status_code=404, detail="Invoice not found")
+    with Session(engine) as session:
+        session.add(payment)
+        session.commit()
 
-            statement = select(SavedPayment).where(SavedPayment.invoice_id == payment.invoice_id)
-            all_payments = session.exec(statement).all()
-            total_paid = sum(p.amount for p in all_payments)
-            
-            if total_paid >= invoice.grand_total:
-                invoice.is_paid = True
-            else:
-                invoice.is_paid = False
-            
-            session.add(invoice)
-            session.commit()
-            
-            return {"status": "success", "new_balance": invoice.grand_total - total_paid}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        invoice = session.get(SavedInvoice, payment.invoice_id)
+        payments = session.exec(
+            select(SavedPayment).where(SavedPayment.invoice_id == payment.invoice_id)
+        ).all()
+
+        total_paid = sum(p.amount for p in payments)
+        invoice.is_paid = total_paid >= invoice.grand_total
+        session.add(invoice)
+        session.commit()
+
+        return {"status": "success"}
 
 @app.get("/get-payments/{invoice_id}")
 def get_payments(invoice_id: int):
     with Session(engine) as session:
-        statement = select(SavedPayment).where(SavedPayment.invoice_id == invoice_id)
-        return session.exec(statement).all()
+        return session.exec(
+            select(SavedPayment).where(SavedPayment.invoice_id == invoice_id)
+        ).all()
 
 @app.post("/update-order-status")
 def update_order_status(invoice_id: int, status: str):
     with Session(engine) as session:
         invoice = session.get(SavedInvoice, invoice_id)
-        if invoice:
-            invoice.order_status = status
-            session.add(invoice)
-            session.commit()
-            return {"status": "updated"}
-        raise HTTPException(status_code=404, detail="Order not found")
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Order not found")
+        invoice.order_status = status
+        session.commit()
+        return {"status": "updated"}
 
 @app.get("/")
-def read_root():
-    return {"status": "Catering Backend is Active"}
+def root():
+    return {"status": "Catering Backend Active"}

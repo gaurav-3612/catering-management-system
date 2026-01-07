@@ -4,6 +4,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../api_service.dart';
 import '../notification_service.dart';
+import '../translations.dart'; // Import Translations
+import '../main.dart'; // Import currentLanguage
 
 class InvoiceScreen extends StatefulWidget {
   final int menuId;
@@ -26,16 +28,42 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   final TextEditingController _discountController =
       TextEditingController(text: "0");
 
+  // FocusNode to detect when user taps the Discount field
+  final FocusNode _discountFocusNode = FocusNode();
+
   double _grandTotal = 0;
   DateTime _selectedDate = DateTime.now();
+
+  // --- HELPER FOR TRANSLATIONS ---
+  String t(String key) {
+    return AppTranslations.get(currentLanguage.value, key);
+  }
 
   @override
   void initState() {
     super.initState();
     _calculateTotal();
+
+    // Listener to auto-clear "0" when user taps discount field
+    _discountFocusNode.addListener(() {
+      if (_discountFocusNode.hasFocus && _discountController.text == "0") {
+        _discountController.clear();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // Always dispose FocusNodes and Controllers
+    _discountFocusNode.dispose();
+    _clientController.dispose();
+    _taxController.dispose();
+    _discountController.dispose();
+    super.dispose();
   }
 
   void _calculateTotal() {
+    // FIX: Using tryParse prevents crashes when fields are empty
     double tax = double.tryParse(_taxController.text) ?? 0;
     double discount = double.tryParse(_discountController.text) ?? 0;
 
@@ -59,7 +87,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
     }
   }
 
-  // --- PDF GENERATION WITH QR CODE ---
+  // --- PDF GENERATION (Kept in English for Font Safety) ---
   Future<void> _generatePdfInvoice() async {
     final pdf = pw.Document();
 
@@ -84,7 +112,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                         pw.Text("Client: ${_clientController.text}",
                             style: const pw.TextStyle(fontSize: 18)),
                       ]),
-                  // QR CODE WIDGET (Built-in to pdf package)
+                  // QR CODE WIDGET
                   pw.BarcodeWidget(
                     barcode: pw.Barcode.qrCode(),
                     data:
@@ -109,7 +137,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                   ],
                   <String>[
                     'Tax (${_taxController.text}%)',
-                    '+ Rs. ${(widget.baseAmount * (double.parse(_taxController.text) / 100)).toStringAsFixed(2)}'
+                    '+ Rs. ${(widget.baseAmount * ((double.tryParse(_taxController.text) ?? 0) / 100)).toStringAsFixed(2)}'
                   ],
                   <String>['Discount', '- Rs. ${_discountController.text}'],
                   <String>[
@@ -138,144 +166,165 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
 
   // Save to DB and Generate PDF
   void _finalizeInvoice() async {
+    // 1. Validation
     if (_clientController.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Enter Client Name")));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(t('enter_client_name')))); // Translated
       return;
     }
 
     try {
-      // 1. Save to Database (Existing Code)
+      // 2. Save Invoice to Database
       await ApiService.saveInvoice(
         menuId: widget.menuId,
         clientName: _clientController.text,
         finalAmount: widget.baseAmount,
-        taxPercent: double.parse(_taxController.text),
-        discount: double.parse(_discountController.text),
+        taxPercent: double.tryParse(_taxController.text) ?? 0,
+        discount: double.tryParse(_discountController.text) ?? 0,
         grandTotal: _grandTotal,
         eventDate: "${_selectedDate.toLocal()}".split(' ')[0],
       );
 
-      // 2. NEW: Schedule Push Notification
-      // Alert user 1 day before the event
-      await NotificationService.scheduleEventReminder(
-        id: widget.menuId, // Unique ID
-        title: "Upcoming Event: ${_clientController.text}",
-        body: "You have a catering event tomorrow! Check preparations.",
+      // 3. Schedule Notification
+      await NotificationService.scheduleEventDayReminder(
+        title: "Catering Reminder",
+        body: "Event for ${_clientController.text} is coming up!",
         eventDate: _selectedDate,
       );
 
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Invoice Saved & Reminder Set!")));
+        SnackBar(
+          content: Text(t('invoice_saved')), // Translated
+          backgroundColor: Colors.green,
+        ),
+      );
 
-      // 3. Generate PDF (Existing Code)
+      // 4. Generate PDF
       await _generatePdfInvoice();
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Error: $e")));
+      print("ERROR SAVING INVOICE: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-          title: const Text("Generate Invoice"),
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // Date Picker Row
-            Row(
+    // Listen to language changes
+    return ValueListenableBuilder<String>(
+      valueListenable: currentLanguage,
+      builder: (context, lang, child) {
+        return Scaffold(
+          appBar: AppBar(
+              title: Text(t('generate_invoice')), // Translated
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
               children: [
-                const Text("Event Date: ",
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                TextButton.icon(
-                  onPressed: _pickDate,
-                  icon: const Icon(Icons.calendar_today,
-                      color: Colors.deepPurple),
-                  label: Text("${_selectedDate.toLocal()}".split(' ')[0],
-                      style: const TextStyle(
-                          fontSize: 16, color: Colors.deepPurple)),
+                // Date Picker Row
+                Row(
+                  children: [
+                    Text("${t('event_date')}: ", // Translated
+                        style: const TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    TextButton.icon(
+                      onPressed: _pickDate,
+                      icon: const Icon(Icons.calendar_today,
+                          color: Colors.deepPurple),
+                      label: Text("${_selectedDate.toLocal()}".split(' ')[0],
+                          style: const TextStyle(
+                              fontSize: 16, color: Colors.deepPurple)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                TextField(
+                  controller: _clientController,
+                  decoration: InputDecoration(
+                      labelText: t('client_name'), // Translated
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.person)),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _taxController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: InputDecoration(
+                            labelText: t('tax_gst'), // Translated
+                            border: const OutlineInputBorder()),
+                        onChanged: (val) => _calculateTotal(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: TextField(
+                        controller: _discountController,
+                        focusNode: _discountFocusNode,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: InputDecoration(
+                            labelText: t('discount'), // Translated
+                            border: const OutlineInputBorder()),
+                        onChanged: (val) => _calculateTotal(),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 30),
+
+                // Preview Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  color: Colors.grey.shade100,
+                  child: Column(
+                    children: [
+                      Text(t('invoice_preview'), // Translated
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      const Divider(),
+                      _row(t('subtotal'),
+                          "₹${widget.baseAmount.toStringAsFixed(0)}"), // Translated
+
+                      // Using tryParse logic here in the UI display too
+                      _row(
+                          t('tax_gst'), // Translated
+                          "+ ₹${(widget.baseAmount * ((double.tryParse(_taxController.text) ?? 0) / 100)).toStringAsFixed(0)}",
+                          color: Colors.red),
+
+                      _row(t('discount'),
+                          "- ₹${_discountController.text}", // Translated
+                          color: Colors.green),
+                      const Divider(),
+                      _row(t('grand_total'),
+                          "₹${_grandTotal.toStringAsFixed(0)}", // Translated
+                          isBold: true),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _finalizeInvoice,
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: Text(t('save_generate_pdf')), // Translated
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-
-            TextField(
-              controller: _clientController,
-              decoration: const InputDecoration(
-                  labelText: "Client Name",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person)),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _taxController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: "Tax % (GST)", border: OutlineInputBorder()),
-                    onChanged: (val) => _calculateTotal(),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: TextField(
-                    controller: _discountController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                        labelText: "Discount (Rs)",
-                        border: OutlineInputBorder()),
-                    onChanged: (val) => _calculateTotal(),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-
-            // Preview Card
-            Container(
-              padding: const EdgeInsets.all(20),
-              color: Colors.grey.shade100,
-              child: Column(
-                children: [
-                  const Text("Invoice Preview",
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  const Divider(),
-                  _row("Subtotal", "₹${widget.baseAmount.toStringAsFixed(0)}"),
-                  _row("Tax",
-                      "+ ₹${(widget.baseAmount * (double.parse(_taxController.text) / 100)).toStringAsFixed(0)}",
-                      color: Colors.red),
-                  _row("Discount", "- ₹${_discountController.text}",
-                      color: Colors.green),
-                  const Divider(),
-                  _row("Grand Total", "₹${_grandTotal.toStringAsFixed(0)}",
-                      isBold: true),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _finalizeInvoice,
-                icon: const Icon(Icons.picture_as_pdf),
-                label: const Text("Save & Generate PDF"),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
-                    foregroundColor: Colors.white),
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 

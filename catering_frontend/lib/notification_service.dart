@@ -6,48 +6,94 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  /// Call once in main()
   static Future<void> init() async {
     tz.initializeTimeZones();
 
-    // Android Settings (Icon must exist in android/app/src/main/res/drawable)
-    // You can use the default flutter icon '@mipmap/ic_launcher'
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    const InitializationSettings settings =
-        InitializationSettings(android: androidSettings);
+    const DarwinInitializationSettings iosSettings =
+        DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const InitializationSettings settings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
 
     await _notificationsPlugin.initialize(settings);
+
+    // ✅ Android notification channel
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'catering_channel',
+      'Catering Reminders',
+      description: 'Reminders for catering events',
+      importance: Importance.max,
+    );
+
+    final androidPlugin =
+        _notificationsPlugin.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    if (androidPlugin != null) {
+      await androidPlugin.createNotificationChannel(channel);
+      await androidPlugin.requestNotificationsPermission();
+    }
   }
 
-  static Future<void> scheduleEventReminder({
-    required int id,
+  static const bool _testMode = true;
+
+  /// 🔔 Notification on EVENT DAY at 9:00 AM
+  static Future<void> scheduleEventDayReminder({
     required String title,
     required String body,
     required DateTime eventDate,
   }) async {
-    // Schedule notification for 9:00 AM on the day BEFORE the event
-    // Subtract 1 day from event date
-    final scheduledDate = eventDate.subtract(const Duration(days: 1));
+    final int notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-    // If the scheduled date is in the past, don't schedule it
-    if (scheduledDate.isBefore(DateTime.now())) return;
+    late DateTime scheduledDate;
+
+    if (_testMode) {
+      // 🧪 TEST MODE → 10 seconds from now
+      scheduledDate = DateTime.now().add(const Duration(seconds: 10));
+    } else {
+      // 🚀 PRODUCTION MODE → Event day at 9:00 AM
+      scheduledDate = DateTime(
+        eventDate.year,
+        eventDate.month,
+        eventDate.day,
+        9,
+        0,
+      );
+
+      // Skip if already past
+      if (scheduledDate.isBefore(DateTime.now())) {
+        return;
+      }
+    }
 
     await _notificationsPlugin.zonedSchedule(
-      id,
+      notificationId,
       title,
       body,
-      tz.TZDateTime.from(scheduledDate, tz.local)
-          .add(const Duration(hours: 9)), // 9 AM
+      tz.TZDateTime.from(scheduledDate, tz.local),
       const NotificationDetails(
         android: AndroidNotificationDetails(
-          'catering_channel', // Channel ID
-          'Event Reminders', // Channel Name
+          'catering_channel',
+          'Catering Reminders',
+          channelDescription: 'Reminders for catering events',
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
         ),
+        iOS: DarwinNotificationDetails(),
       ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       uiLocalNotificationDateInterpretation:
           UILocalNotificationDateInterpretation.absoluteTime,
     );

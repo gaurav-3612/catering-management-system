@@ -3,20 +3,28 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'pricing_screen.dart';
+import '../translations.dart'; // Import Translations
+import '../main.dart'; // Import currentLanguage
 
 class MenuDetailScreen extends StatelessWidget {
   final Map<String, dynamic> fullMenu;
   final String eventType;
   final String cuisine;
+  final int menuId;
+  final int guestCount;
+  final int budgetPerPlate;
 
   const MenuDetailScreen({
     super.key,
     required this.fullMenu,
     required this.eventType,
     required this.cuisine,
+    required this.menuId,
+    required this.guestCount,
+    required this.budgetPerPlate,
   });
 
-  // --- PDF GENERATION LOGIC ---
+  // --- PDF GENERATION (Kept in English for Font Safety) ---
   Future<void> _generateAndSharePdf() async {
     final pdf = pw.Document();
 
@@ -32,6 +40,10 @@ class MenuDetailScreen extends StatelessWidget {
                     style: pw.TextStyle(
                         fontSize: 24, fontWeight: pw.FontWeight.bold)),
               ),
+              pw.SizedBox(height: 10),
+              pw.Text("Guests: $guestCount | Budget: Rs. $budgetPerPlate/plate",
+                  style: const pw.TextStyle(
+                      fontSize: 14, color: PdfColors.grey700)),
               pw.SizedBox(height: 20),
               _buildPdfSection("Starters", fullMenu['starters']),
               _buildPdfSection("Main Course", fullMenu['main_course']),
@@ -49,7 +61,6 @@ class MenuDetailScreen extends StatelessWidget {
       ),
     );
 
-    // Open the standard Share/Print dialog
     await Printing.sharePdf(
         bytes: await pdf.save(), filename: 'catering_menu.pdf');
   }
@@ -77,64 +88,86 @@ class MenuDetailScreen extends StatelessWidget {
   // --- UI BUILD ---
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("$eventType Menu"),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        actions: [
-          // SHARE BUTTON
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _generateAndSharePdf,
-            tooltip: "Share PDF",
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Cuisine: $cuisine",
-                style:
-                    const TextStyle(fontSize: 18, fontStyle: FontStyle.italic)),
-            const SizedBox(height: 20),
-            _buildUiSection("Starters", fullMenu['starters']),
-            _buildUiSection("Main Course", fullMenu['main_course']),
-            _buildUiSection("Breads & Rice",
-                [...?fullMenu['breads'], ...?fullMenu['rice']]),
-            _buildUiSection("Desserts", fullMenu['desserts']),
-            _buildUiSection("Beverages", fullMenu['beverages']),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: Colors.deepPurple,
-        icon: const Icon(Icons.attach_money, color: Colors.white),
-        label:
-            const Text("Create Quote", style: TextStyle(color: Colors.white)),
-        onPressed: () {
-          // Since we are viewing history, we might not have the ID passed in directly.
-          // For now, let's assume standard values or pass them if available.
-          // Ideally, 'fullMenu' should contain the ID and Guest Count.
+    // Wrap UI in ValueListenableBuilder for real-time translation
+    return ValueListenableBuilder<String>(
+      valueListenable: currentLanguage,
+      builder: (context, lang, child) {
+        // Helper to get translation
+        String t(String key) => AppTranslations.get(lang, key);
 
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => PricingScreen(
-                menuId: 0, // Placeholder if ID isn't available in this view yet
-                guestCount: 500, // You can pass dynamic values here
-                baseBudgetPerPlate: 400,
+        return Scaffold(
+          appBar: AppBar(
+            title: Text("$eventType Menu"),
+            backgroundColor: Colors.deepPurple,
+            foregroundColor: Colors.white,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.share),
+                onPressed: _generateAndSharePdf,
+                tooltip: t('share_pdf'), // Translated
               ),
+            ],
+          ),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // INFO CARD
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  color: Colors.deepPurple.shade50,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("${t('cuisine')}: $cuisine", // Translated "Cuisine"
+                          style: const TextStyle(
+                              fontSize: 16, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 5),
+                      Text(
+                          "${t('guests')}: $guestCount  |  ${t('budget')}: ₹$budgetPerPlate"), // Translated
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                _buildUiSection(t('starters'), fullMenu['starters']),
+                _buildUiSection(t('main_course'), fullMenu['main_course']),
+                _buildUiSection("${t('breads')} & ${t('rice')}",
+                    [...?fullMenu['breads'], ...?fullMenu['rice']]),
+                _buildUiSection(t('desserts'), fullMenu['desserts']),
+                _buildUiSection(t('beverages'), fullMenu['beverages']),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            backgroundColor: Colors.deepPurple,
+            icon: const Icon(Icons.attach_money, color: Colors.white),
+            label: Text(t('create_quote'),
+                style: const TextStyle(color: Colors.white)), // Translated
+            onPressed: () {
+              // 1. Calculate the TOTAL Base Cost here (Guests * Price)
+              double totalBaseCost = (guestCount * budgetPerPlate).toDouble();
+
+              // 2. Navigate to Pricing Screen
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PricingScreen(
+                    menuId: menuId,
+                    guestCount: guestCount,
+                    baseFoodCost: totalBaseCost,
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
-  // Normal UI Helper (Same as before)
   Widget _buildUiSection(String title, List<dynamic>? items) {
     if (items == null || items.isEmpty) return const SizedBox.shrink();
     return Card(

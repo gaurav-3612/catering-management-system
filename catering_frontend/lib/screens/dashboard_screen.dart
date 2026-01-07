@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api_service.dart';
-// --- CRITICAL IMPORTS ---
-import '../translations.dart'; // Import the new dictionary file
-import '../main.dart'; // Import main.dart to access 'currentLanguage'
-// ------------------------
+import '../translations.dart';
+import '../main.dart';
 import 'menu_generator_screen.dart';
 import 'history_screen.dart';
 import 'payment_ledger_screen.dart';
@@ -49,184 +47,191 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   // Helper Function for Translation
-  String t(String key) {
-    // Uses the global 'currentLanguage' from main.dart
-    return AppTranslations.get(currentLanguage.value, key);
+  String t(String key, String lang) {
+    return AppTranslations.get(lang, key);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.grey.shade100,
-      appBar: AppBar(
-        title: Text(t('dashboard_title')), // Translated Title
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: false,
-        actions: [
-          // LANGUAGE DROPDOWN
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: DropdownButton<String>(
-              value: currentLanguage.value,
-              dropdownColor: Colors.deepPurple,
-              icon: const Icon(Icons.language, color: Colors.white),
-              underline: const SizedBox(),
-              items: const [
-                DropdownMenuItem(
-                    value: 'en',
-                    child:
-                        Text("English", style: TextStyle(color: Colors.white))),
-                DropdownMenuItem(
-                    value: 'hi',
-                    child:
-                        Text("हिंदी", style: TextStyle(color: Colors.white))),
-                DropdownMenuItem(
-                    value: 'te',
-                    child:
-                        Text("తెలుగు", style: TextStyle(color: Colors.white))),
-              ],
-              onChanged: (String? val) {
-                if (val != null) {
-                  // Update global variable to trigger App Rebuild
-                  currentLanguage.value = val;
-                }
-              },
-            ),
-          )
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadStats,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(t('business_overview'),
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 15),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 15,
-                mainAxisSpacing: 15,
-                childAspectRatio: 1.4,
-                children: [
-                  _buildStatCard(
-                      t('total_events'),
-                      stats['total_events'].toString(),
-                      Icons.event_available,
-                      Colors.blue),
-                  _buildStatCard(
-                      t('guests_served'),
-                      stats['total_guests'].toString(),
-                      Icons.groups,
-                      Colors.orange),
-                  _buildStatCard(
-                      t('est_revenue'),
-                      stats['projected_revenue'].toString(),
-                      Icons.currency_rupee,
-                      Colors.green),
-                  _buildStatCard(
-                      t('top_cuisine'),
-                      stats['top_cuisine'].toString(),
-                      Icons.restaurant,
-                      Colors.purple),
-                ],
-              ),
-              const SizedBox(height: 30),
-              Text(t('quick_actions'),
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 15),
-              _buildActionButton(
-                context,
-                t('create_menu'),
-                t('create_menu_desc'),
-                Icons.add_circle,
-                Colors.deepPurple,
-                () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const MenuGeneratorScreen()))
-                    .then((_) => _loadStats()),
-              ),
-              const SizedBox(height: 15),
-              _buildActionButton(
-                context,
-                t('view_history'),
-                t('view_history_desc'),
-                Icons.history,
-                Colors.deepPurple.shade300,
-                () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const HistoryScreen()))
-                    .then((_) => _loadStats()),
-              ),
-              const SizedBox(height: 15),
-              _buildActionButton(
-                context,
-                t('payment_ledger'),
-                t('payment_ledger_desc'),
-                Icons.account_balance_wallet,
-                Colors.green,
-                () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => const PaymentLedgerScreen())),
-              ),
-              const SizedBox(height: 30),
-              Text(t('upcoming_orders'),
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 15),
-              if (_recentOrders.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10)),
-                  child: const Center(
-                      child: Text("No upcoming orders found.",
-                          style: TextStyle(color: Colors.grey))),
+    // 1. Wrap the UI in ValueListenableBuilder
+    // This makes the screen rebuild AUTOMATICALLY when language changes
+    return ValueListenableBuilder<String>(
+      valueListenable: currentLanguage,
+      builder: (context, lang, child) {
+        return Scaffold(
+          backgroundColor: Colors.grey.shade100,
+          appBar: AppBar(
+            title: Text(t('dashboard_title', lang)), // Translated
+            backgroundColor: Colors.deepPurple,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            centerTitle: false,
+            actions: [
+              // LANGUAGE DROPDOWN
+              Padding(
+                padding: const EdgeInsets.only(right: 16.0),
+                child: DropdownButton<String>(
+                  value: lang, // Use the 'lang' from the builder
+                  dropdownColor: Colors.deepPurple,
+                  icon: const Icon(Icons.language, color: Colors.white),
+                  underline: const SizedBox(),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'en',
+                        child: Text("English",
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: 'hi',
+                        child: Text("हिंदी",
+                            style: TextStyle(color: Colors.white))),
+                    DropdownMenuItem(
+                        value: 'te',
+                        child: Text("తెలుగు",
+                            style: TextStyle(color: Colors.white))),
+                  ],
+                  onChanged: (String? val) {
+                    if (val != null) {
+                      // This triggers the ValueListenableBuilder to rebuild
+                      currentLanguage.value = val;
+                    }
+                  },
                 ),
-              ..._recentOrders.map((order) {
-                bool isCompleted = order['order_status'] == "Completed";
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor:
-                          isCompleted ? Colors.grey : Colors.blue.shade100,
-                      child: Icon(Icons.event,
-                          color: isCompleted ? Colors.white : Colors.blue),
-                    ),
-                    title: Text(order['client_name'] ?? "Unknown"),
-                    subtitle: Text("Date: ${order['event_date']}"),
-                    trailing: isCompleted
-                        ? const Icon(Icons.check_circle, color: Colors.green)
-                        : ElevatedButton(
-                            onPressed: () => _markCompleted(order['id']),
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green),
-                            child: Text(t('mark_done'),
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 12)),
-                          ),
-                  ),
-                );
-              }).toList(),
-              const SizedBox(height: 50),
+              )
             ],
           ),
-        ),
-      ),
+          body: RefreshIndicator(
+            onRefresh: _loadStats,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(t('business_overview', lang),
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 15),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisSpacing: 15,
+                    mainAxisSpacing: 15,
+                    childAspectRatio: 1.4,
+                    children: [
+                      _buildStatCard(
+                          t('total_events', lang),
+                          stats['total_events'].toString(),
+                          Icons.event_available,
+                          Colors.blue),
+                      _buildStatCard(
+                          t('guests_served', lang),
+                          stats['total_guests'].toString(),
+                          Icons.groups,
+                          Colors.orange),
+                      _buildStatCard(
+                          t('est_revenue', lang),
+                          stats['projected_revenue'].toString(),
+                          Icons.currency_rupee,
+                          Colors.green),
+                      _buildStatCard(
+                          t('top_cuisine', lang),
+                          stats['top_cuisine'].toString(),
+                          Icons.restaurant,
+                          Colors.purple),
+                    ],
+                  ),
+                  const SizedBox(height: 30),
+                  Text(t('quick_actions', lang),
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 15),
+                  _buildActionButton(
+                    context,
+                    t('create_menu', lang),
+                    t('create_menu_desc', lang),
+                    Icons.add_circle,
+                    Colors.deepPurple,
+                    () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const MenuGeneratorScreen()))
+                        .then((_) => _loadStats()),
+                  ),
+                  const SizedBox(height: 15),
+                  _buildActionButton(
+                    context,
+                    t('view_history', lang),
+                    t('view_history_desc', lang),
+                    Icons.history,
+                    Colors.deepPurple.shade300,
+                    () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const HistoryScreen()))
+                        .then((_) => _loadStats()),
+                  ),
+                  const SizedBox(height: 15),
+                  _buildActionButton(
+                    context,
+                    t('payment_ledger', lang),
+                    t('payment_ledger_desc', lang),
+                    Icons.account_balance_wallet,
+                    Colors.green,
+                    () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const PaymentLedgerScreen())),
+                  ),
+                  const SizedBox(height: 30),
+                  Text(t('upcoming_orders', lang),
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 15),
+                  if (_recentOrders.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10)),
+                      child: const Center(
+                          child: Text("No upcoming orders found.",
+                              style: TextStyle(color: Colors.grey))),
+                    ),
+                  ..._recentOrders.map((order) {
+                    bool isCompleted = order['order_status'] == "Completed";
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              isCompleted ? Colors.grey : Colors.blue.shade100,
+                          child: Icon(Icons.event,
+                              color: isCompleted ? Colors.white : Colors.blue),
+                        ),
+                        title: Text(order['client_name'] ?? "Unknown"),
+                        subtitle: Text("Date: ${order['event_date']}"),
+                        trailing: isCompleted
+                            ? const Icon(Icons.check_circle,
+                                color: Colors.green)
+                            : ElevatedButton(
+                                onPressed: () => _markCompleted(order['id']),
+                                style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green),
+                                child: Text(t('mark_done', lang),
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 12)),
+                              ),
+                      ),
+                    );
+                  }).toList(),
+                  const SizedBox(height: 50),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

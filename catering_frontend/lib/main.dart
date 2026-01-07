@@ -7,7 +7,6 @@ ValueNotifier<String> currentLanguage = ValueNotifier<String>('en');
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Wrap safe init like before
   try {
     await NotificationService.init();
   } catch (e) {

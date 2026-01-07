@@ -15,7 +15,7 @@ class Event(SQLModel, table=True):
     event_date: datetime
     guest_count: int
     budget: float
-    status: str = "Pending" # Pending, Completed
+    status: str = "Pending"
 
 # 2. Menus Table [cite: 154]
 class Menu(SQLModel, table=True):

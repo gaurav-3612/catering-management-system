@@ -1,7 +1,7 @@
 import 'package:catering_frontend/screens/history_screen.dart';
 import 'package:flutter/material.dart';
 import '../api_service.dart';
-// --- NEW IMPORTS FOR LANGUAGE ---
+import 'invoice_screen.dart'; // Import Invoice Screen
 import '../translations.dart';
 import '../main.dart';
 
@@ -17,7 +17,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
   final TextEditingController _guestsController = TextEditingController();
   final TextEditingController _budgetController = TextEditingController();
 
-  // Dropdown Initial Values (Restored all options)
+  // Dropdown Initial Values
   String _selectedEvent = 'Wedding';
   String _selectedCuisine = 'North Indian';
   String _selectedDiet = 'Veg';
@@ -25,6 +25,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
   // State variables
   bool _isLoading = false;
   Map<String, dynamic>? _generatedMenu;
+  int? _savedMenuId; // Stores the New ID
   String? _errorMessage;
 
   // --- HELPER TRANSLATION FUNCTION ---
@@ -47,6 +48,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
       _isLoading = true;
       _errorMessage = null;
       _generatedMenu = null;
+      _savedMenuId = null; // Reset ID when generating a new menu
     });
 
     try {
@@ -59,17 +61,12 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
       );
 
       // --- ROBUST PARSING FIX ---
-      // We create a new Map to hold our editable data
       Map<String, dynamic> safeMenu = {};
-
       menu.forEach((key, value) {
-        // Only add this section if the value is actually a List
         if (value is List) {
           safeMenu[key] = List<dynamic>.from(value);
         } else {
-          // If the AI returns weird data (like a Map or String), ignore it or use empty list
           safeMenu[key] = [];
-          print("Warning: Section $key was not a List. Received: $value");
         }
       });
 
@@ -82,23 +79,28 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         _errorMessage = "Error: $e";
         _isLoading = false;
       });
-      print("Menu Generation Error: $e"); // Print to console for debugging
+      print("Menu Generation Error: $e");
     }
   }
 
   void _saveMenu() async {
     if (_generatedMenu == null) return;
     try {
-      await ApiService.saveMenuToDatabase(
+      // Capture the RESPONSE to get the NEW ID
+      final response = await ApiService.saveMenuToDatabase(
         eventType: _selectedEvent,
         cuisine: _selectedCuisine,
         guestCount: int.tryParse(_guestsController.text) ?? 100,
         budget: int.tryParse(_budgetController.text) ?? 500,
         fullMenu: _generatedMenu!,
       );
+
+      setState(() {
+        _savedMenuId = response['id']; // Store the New ID!
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(t('menu_saved')),
-          backgroundColor: Colors.green)); // Translated
+          content: Text(t('menu_saved')), backgroundColor: Colors.green));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Failed: $e"), backgroundColor: Colors.red));
@@ -145,7 +147,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("${t('add_item')} $section"), // Translated Part
+        title: Text("${t('add_item')} $section"),
         content: TextField(
             controller: addCtrl,
             decoration: const InputDecoration(labelText: "New Dish Name")),
@@ -176,7 +178,6 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Wrap with ValueListenableBuilder to listen for Language Changes
     return ValueListenableBuilder<String>(
       valueListenable: currentLanguage,
       builder: (context, lang, child) {
@@ -185,7 +186,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
           child: Scaffold(
             backgroundColor: Colors.white,
             appBar: AppBar(
-              title: Text(t('menu_generator_title')), // Translated
+              title: Text(t('menu_generator_title')),
               backgroundColor: Colors.deepPurple,
               foregroundColor: Colors.white,
               actions: [
@@ -207,9 +208,8 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          // RESTORED FULL EVENT LIST
                           _buildDropdown(
-                              t('event_type'), // Translated
+                              t('event_type'),
                               [
                                 "Wedding",
                                 "Birthday",
@@ -220,10 +220,8 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                               _selectedEvent,
                               (v) => setState(() => _selectedEvent = v!)),
                           const SizedBox(height: 10),
-
-                          // RESTORED FULL CUISINE LIST
                           _buildDropdown(
-                              t('cuisine'), // Translated
+                              t('cuisine'),
                               [
                                 "North Indian",
                                 "South Indian",
@@ -234,29 +232,22 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                               _selectedCuisine,
                               (v) => setState(() => _selectedCuisine = v!)),
                           const SizedBox(height: 10),
-
-                          // RESTORED DIETARY PREFERENCE
                           _buildDropdown(
-                              t('dietary'), // Translated
+                              t('dietary'),
                               ["Veg", "Non-Veg", "Vegan", "Jain"],
                               _selectedDiet,
                               (v) => setState(() => _selectedDiet = v!)),
-
                           const SizedBox(height: 10),
                           Row(
                             children: [
                               Expanded(
-                                  child: _buildTextField(
-                                      t('guests'), // Translated
-                                      _guestsController,
-                                      Icons.people,
+                                  child: _buildTextField(t('guests'),
+                                      _guestsController, Icons.people,
                                       isNumber: true)),
                               const SizedBox(width: 10),
                               Expanded(
-                                  child: _buildTextField(
-                                      t('budget'), // Translated
-                                      _budgetController,
-                                      Icons.currency_rupee,
+                                  child: _buildTextField(t('budget'),
+                                      _budgetController, Icons.currency_rupee,
                                       isNumber: true)),
                             ],
                           ),
@@ -275,7 +266,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                                   : const Icon(Icons.auto_awesome),
                               label: Text(_isLoading
                                   ? t('generating')
-                                  : t('generate_btn')), // Translated
+                                  : t('generate_btn')),
                               style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.deepPurple,
                                   foregroundColor: Colors.white),
@@ -287,7 +278,6 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // --- ERROR DISPLAY ---
                   if (_errorMessage != null)
                     Container(
                       padding: const EdgeInsets.all(10),
@@ -301,22 +291,46 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(t('suggested_menu'), // Translated
+                        Text(t('suggested_menu'),
                             style: const TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.deepPurple)),
-                        IconButton(
-                          icon:
-                              const Icon(Icons.save, color: Colors.deepPurple),
-                          onPressed: _saveMenu,
-                          tooltip: t('save_history'), // Translated
-                        )
+
+                        // SHOW INVOICE BUTTON AFTER SAVING
+                        if (_savedMenuId == null)
+                          IconButton(
+                            icon: const Icon(Icons.save,
+                                color: Colors.deepPurple),
+                            onPressed: _saveMenu,
+                            tooltip: t('save_history'),
+                          )
+                        else
+                          IconButton(
+                            icon: const Icon(Icons.receipt_long,
+                                color: Colors.green, size: 30),
+                            tooltip: "Generate Invoice",
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => InvoiceScreen(
+                                    // FIXED LINE: Removed menuData here
+                                    menuId: _savedMenuId!,
+                                    baseAmount: (double.tryParse(
+                                                _guestsController.text) ??
+                                            0) *
+                                        (double.tryParse(
+                                                _budgetController.text) ??
+                                            0),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                       ],
                     ),
                     const SizedBox(height: 10),
-
-                    // Editable Sections (Matches backend JSON keys exactly)
                     _buildEditableSection("starters", t('starters')),
                     _buildEditableSection("main_course", t('main_course')),
                     _buildEditableSection("breads", t('breads')),
@@ -334,10 +348,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     );
   }
 
-  // --- HELPER WIDGETS ---
-
   Widget _buildEditableSection(String jsonKey, String title) {
-    // Safety check: Ensure the list exists, default to empty list if not
     List<dynamic> items = _generatedMenu![jsonKey] ?? [];
 
     return Card(
@@ -346,8 +357,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         title: Text(title,
             style: const TextStyle(
                 fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-        initiallyExpanded:
-            items.isNotEmpty, // Open automatically if there are items
+        initiallyExpanded: items.isNotEmpty,
         children: [
           ...items.asMap().entries.map((entry) {
             int idx = entry.key;
@@ -374,7 +384,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
           TextButton.icon(
             onPressed: () => _addItem(jsonKey),
             icon: const Icon(Icons.add),
-            label: Text(t('add_item')), // Translated
+            label: Text(t('add_item')),
           )
         ],
       ),
