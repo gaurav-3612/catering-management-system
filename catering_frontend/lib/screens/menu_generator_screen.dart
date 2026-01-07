@@ -25,13 +25,11 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
   // State variables
   bool _isLoading = false;
   Map<String, dynamic>? _generatedMenu;
-  int? _savedMenuId; // Stores the New ID
+  int? _savedMenuId;
   String? _errorMessage;
 
-  // --- HELPER TRANSLATION FUNCTION ---
-  String t(String key) {
-    return AppTranslations.get(currentLanguage.value, key);
-  }
+  // Translation Helper
+  String t(String key) => AppTranslations.get(currentLanguage.value, key);
 
   @override
   void dispose() {
@@ -48,7 +46,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
       _isLoading = true;
       _errorMessage = null;
       _generatedMenu = null;
-      _savedMenuId = null; // Reset ID when generating a new menu
+      _savedMenuId = null;
     });
 
     try {
@@ -60,7 +58,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         dietaryPreference: _selectedDiet,
       );
 
-      // --- ROBUST PARSING FIX ---
+      // Robust Parsing: Ensure all values are Lists
       Map<String, dynamic> safeMenu = {};
       menu.forEach((key, value) {
         if (value is List) {
@@ -79,16 +77,12 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         _errorMessage = "Error: $e";
         _isLoading = false;
       });
-      print("Menu Generation Error: $e");
     }
   }
 
-  // ✅ NEW FEATURE: REGENERATE SECTION
   void _regenerateSectionItems(String sectionKey) async {
     setState(() => _isLoading = true);
-
     try {
-      // Convert current dynamic list to String list for the API
       List<String> currentItems = (_generatedMenu![sectionKey] as List)
           .map((e) => e.toString())
           .toList();
@@ -114,9 +108,8 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text("Failed to refresh: $e"),
-            backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text("Error: $e")));
       }
     }
   }
@@ -124,7 +117,6 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
   void _saveMenu() async {
     if (_generatedMenu == null) return;
     try {
-      // Capture the RESPONSE to get the NEW ID
       final response = await ApiService.saveMenuToDatabase(
         eventType: _selectedEvent,
         cuisine: _selectedCuisine,
@@ -134,14 +126,14 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
       );
 
       setState(() {
-        _savedMenuId = response['id']; // Store the New ID!
+        _savedMenuId = response['id'];
       });
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(t('menu_saved')), backgroundColor: Colors.green));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Failed: $e"), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Failed: $e")));
     }
   }
 
@@ -153,9 +145,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Edit Dish"),
-        content: TextField(
-            controller: editCtrl,
-            decoration: const InputDecoration(labelText: "Dish Name")),
+        content: TextField(controller: editCtrl),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
@@ -188,7 +178,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         title: Text("${t('add_item')} $section"),
         content: TextField(
             controller: addCtrl,
-            decoration: const InputDecoration(labelText: "New Dish Name")),
+            decoration: const InputDecoration(hintText: "Dish Name - ₹Cost")),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
@@ -197,9 +187,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
             onPressed: () {
               if (addCtrl.text.isNotEmpty) {
                 setState(() {
-                  if (_generatedMenu![section] == null) {
-                    _generatedMenu![section] = [];
-                  }
+                  _generatedMenu![section] ??= [];
                   _generatedMenu![section].add(addCtrl.text);
                 });
               }
@@ -212,10 +200,63 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     );
   }
 
+  // --- CALCULATION LOGIC ---
+  double _calculateItemWiseTotal() {
+    double total = 0;
+    if (_generatedMenu == null) return 0;
+
+    // Only calculate for known food sections to avoid errors
+    List<String> validSections = [
+      "starters",
+      "main_course",
+      "breads",
+      "rice",
+      "desserts",
+      "beverages"
+    ];
+
+    _generatedMenu!.forEach((key, value) {
+      if (validSections.contains(key) && value is List) {
+        for (var item in value) {
+          String s = item.toString();
+
+          // Improved Regex to handle "₹ 50", "Rs.50", "50 INR"
+          RegExp regExp = RegExp(r'(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d+)?)',
+              caseSensitive: false);
+          Match? match = regExp.firstMatch(s);
+
+          if (match != null) {
+            String costStr =
+                match.group(1)!.replaceAll(',', ''); // Remove commas
+            total += double.tryParse(costStr) ?? 0;
+          }
+        }
+      }
+    });
+    return total;
+  }
+
   // --- UI BUILD ---
 
   @override
   Widget build(BuildContext context) {
+    // 1. Calculate Real AI Cost (Sum of all items)
+    double aiCostPerPlate = _calculateItemWiseTotal();
+
+    // 2. Get User Inputs
+    int guests = int.tryParse(_guestsController.text) ?? 0;
+    double userBudgetPerPlate = double.tryParse(_budgetController.text) ?? 0;
+
+    // 3. LOGIC: Use AI Cost if available (>0), else use User Budget
+    double finalRatePerPlate =
+        aiCostPerPlate > 0 ? aiCostPerPlate : userBudgetPerPlate;
+
+    // 4. Calculate Final Total Quote (Guests * Actual Rate)
+    double totalInvoiceAmount = finalRatePerPlate * guests;
+
+    // 5. Check if Over Budget (Visual Warning)
+    bool isOverBudget = aiCostPerPlate > userBudgetPerPlate;
+
     return ValueListenableBuilder<String>(
       valueListenable: currentLanguage,
       builder: (context, lang, child) {
@@ -252,8 +293,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                                 "Wedding",
                                 "Birthday",
                                 "Corporate",
-                                "Anniversary",
-                                "Engagement"
+                                "Anniversary"
                               ],
                               _selectedEvent,
                               (v) => setState(() => _selectedEvent = v!)),
@@ -264,8 +304,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                                 "North Indian",
                                 "South Indian",
                                 "Chinese",
-                                "Continental",
-                                "Italian"
+                                "Continental"
                               ],
                               _selectedCuisine,
                               (v) => setState(() => _selectedCuisine = v!)),
@@ -324,8 +363,84 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                           style: const TextStyle(color: Colors.red)),
                     ),
 
-                  // --- MENU RESULTS SECTION ---
+                  // --- RESULTS SECTION ---
                   if (_generatedMenu != null) ...[
+                    // COST SUMMARY CARD
+                    Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(
+                              color: isOverBudget ? Colors.red : Colors.green),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                blurRadius: 5)
+                          ]),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text("Your Budget:",
+                                  style: TextStyle(color: Colors.grey)),
+                              Text("₹${userBudgetPerPlate.toStringAsFixed(0)}",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: 5),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                  aiCostPerPlate > 0
+                                      ? "Actual Cost (AI):"
+                                      : "Estimated Cost:",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: isOverBudget
+                                          ? Colors.red
+                                          : Colors.black)),
+                              Text(
+                                  "₹${finalRatePerPlate.toStringAsFixed(0)} / plate",
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      color: isOverBudget
+                                          ? Colors.red
+                                          : Colors.green)),
+                            ],
+                          ),
+                          if (isOverBudget)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 5),
+                              child: Text(
+                                  "⚠️ Cost exceeds budget! Remove items to reduce cost.",
+                                  style: TextStyle(
+                                      color: Colors.red, fontSize: 12)),
+                            ),
+                          const Divider(),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text("Total Quote ($guests guests):",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold)),
+                              Text("₹${totalInvoiceAmount.toStringAsFixed(0)}",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.deepPurple,
+                                      fontSize: 20)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // BUTTONS
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -334,8 +449,6 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.deepPurple)),
-
-                        // SHOW INVOICE BUTTON AFTER SAVING
                         if (_savedMenuId == null)
                           IconButton(
                             icon: const Icon(Icons.save,
@@ -349,17 +462,13 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                                 color: Colors.green, size: 30),
                             tooltip: "Generate Invoice",
                             onPressed: () {
+                              // ✅ Passes the ACTUAL Calculated Total
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (_) => InvoiceScreen(
                                     menuId: _savedMenuId!,
-                                    baseAmount: (double.tryParse(
-                                                _guestsController.text) ??
-                                            0) *
-                                        (double.tryParse(
-                                                _budgetController.text) ??
-                                            0),
+                                    baseAmount: totalInvoiceAmount,
                                   ),
                                 ),
                               );
@@ -391,17 +500,15 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: ExpansionTile(
-        // UPDATED TITLE WITH REFRESH BUTTON
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(title,
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-            if (_generatedMenu != null) // Only show if menu exists
+            if (_generatedMenu != null)
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.orange),
-                tooltip: "Regenerate this section",
                 onPressed: () => _regenerateSectionItems(jsonKey),
               ),
           ],
@@ -410,18 +517,36 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         children: [
           ...items.asMap().entries.map((entry) {
             int idx = entry.key;
-            String name = entry.value.toString();
+            String rawText = entry.value.toString();
+            String name = rawText;
+            String price = "";
+
+            // Display Parse Logic
+            RegExp regExp = RegExp(r'(.*)((?:₹|Rs\.?|INR)\s*[\d,]+(?:\.\d+)?)',
+                caseSensitive: false);
+            Match? match = regExp.firstMatch(rawText);
+
+            if (match != null) {
+              name = match.group(1)?.replaceAll('-', '').trim() ?? rawText;
+              price = match.group(2) ?? "";
+            }
+
             return ListTile(
               dense: true,
               leading: const Icon(Icons.circle, size: 8, color: Colors.green),
               title: Text(name),
+              subtitle: price.isNotEmpty
+                  ? Text(price,
+                      style: const TextStyle(
+                          color: Colors.green, fontWeight: FontWeight.bold))
+                  : null,
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
                       icon:
                           const Icon(Icons.edit, size: 20, color: Colors.blue),
-                      onPressed: () => _editItem(jsonKey, idx, name)),
+                      onPressed: () => _editItem(jsonKey, idx, rawText)),
                   IconButton(
                       icon:
                           const Icon(Icons.delete, size: 20, color: Colors.red),

@@ -7,7 +7,7 @@ import google.generativeai as genai
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 
 # --- CONFIGURATION ---
-GENAI_API_KEY = "AIzaSyBCQfDDOhDfgE8Jk-VAnpiW8TnjQya7dP0"
+GENAI_API_KEY = "AIzaSyDDNwfkYt0QCiT85I91zvBylSknAVHzYJw"
 genai.configure(api_key=GENAI_API_KEY)
 
 app = FastAPI()
@@ -96,7 +96,6 @@ class MenuRequest(BaseModel):
     dietary_preference: str
     special_requirements: str = "None"
 
-# ✅ NEW INPUT MODEL FOR REGENERATION
 class RegenerateRequest(BaseModel):
     section: str
     event_type: str
@@ -104,16 +103,27 @@ class RegenerateRequest(BaseModel):
     dietary: str
     current_items: list[str] = []
 
-# --- MENU GENERATION ---
+# --- MENU GENERATION (STRICT BUDGET MODE) ---
 @app.post("/generate-menu")
 async def generate_menu(request: MenuRequest):
     prompt = f"""
     Act as a professional catering chef.
+    
+    🛑 STRICT CONSTRAINTS (READ FIRST):
+    1. **PRICING:** Every item MUST include an estimated cost in this exact format: "Item Name - ₹Cost" (e.g., "Dal Makhani - ₹40").
+    2. **BUDGET:** The TOTAL sum of all item costs MUST NOT EXCEED ₹{request.budget_per_plate}.
+       - If your selected items are too expensive, replace them with cheaper options to fit the budget.
+       - Do NOT output a menu that exceeds the budget.
+
     Generate a {request.dietary_preference} menu for a {request.event_type}.
     Cuisine: {request.cuisine}
     Guest Count: {request.guest_count}
-    Budget per Plate: ₹{request.budget_per_plate}
     Special Requirements: {request.special_requirements}
+
+    DIETARY RULES: 
+    - If 'Veg', NO meat/egg/fish.
+    - If 'Jain', NO onion/garlic/roots.
+    - Provide 3-5 items per category.
 
     Output strictly in valid JSON format with keys: starters, main_course, breads, rice, desserts, beverages.
     Do not add markdown formatting.
@@ -126,32 +136,32 @@ async def generate_menu(request: MenuRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ✅ NEW ENDPOINT: REGENERATE SECTION
+# --- REGENERATE SECTION (STRICT PRICING MODE) ---
 @app.post("/regenerate-section")
 async def regenerate_section(req: RegenerateRequest):
     prompt = f"""
     Act as a professional catering chef.
-    I am planning a {req.dietary} {req.event_type} with {req.cuisine} cuisine.
     
-    The user wants to REFRESH the "{req.section}" section of the menu.
-    Provide 5 NEW and DIFFERENT options for "{req.section}".
-    
-    IMPORTANT:
-    - Do NOT include these items (they were already suggested): {", ".join(req.current_items)}
-    - Output strictly a valid JSON List of strings.
-    
-    Example Output:
-    ["New Dish A", "New Dish B", "New Dish C", "New Dish D", "New Dish E"]
+    🛑 STRICT INSTRUCTION:
+    - Provide 5 NEW options for the "{req.section}" section.
+    - **EVERY ITEM MUST HAVE A PRICE.**
+    - Format: "Item Name - ₹Cost"
+    - Example: "Hara Bhara Kabab - ₹30"
+
+    Context:
+    - Event: {req.event_type}
+    - Cuisine: {req.cuisine}
+    - Dietary: {req.dietary}
+    - DO NOT include: {", ".join(req.current_items)}
+
+    Output strictly a valid JSON List of strings.
     Do not add markdown formatting.
     """
     
     try:
         model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
-        
-        # Clean up JSON
         raw_text = response.text.replace("```json", "").replace("```", "").strip()
-        
         return {"new_items": json.loads(raw_text)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

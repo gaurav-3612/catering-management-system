@@ -16,9 +16,42 @@ class _HistoryScreenState extends State<HistoryScreen> {
   late Future<List<dynamic>> _historyFuture;
 
   // --- HELPER FUNCTION ---
-  // This makes using your AppTranslations class easier inside this screen
   String t(String key) {
     return AppTranslations.get(currentLanguage.value, key);
+  }
+
+  // --- LOGIC TO CALCULATE REAL COST FROM SAVED JSON ---
+  double _calculateItemWiseTotal(Map<String, dynamic> menuData) {
+    double total = 0;
+
+    // Only look at specific food sections
+    List<String> validSections = [
+      "starters",
+      "main_course",
+      "breads",
+      "rice",
+      "desserts",
+      "beverages"
+    ];
+
+    menuData.forEach((key, value) {
+      if (validSections.contains(key) && value is List) {
+        for (var item in value) {
+          String s = item.toString();
+          // Regex to find price: matches "₹ 40", "Rs.40", "INR 40"
+          RegExp regExp = RegExp(r'(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d+)?)',
+              caseSensitive: false);
+          Match? match = regExp.firstMatch(s);
+
+          if (match != null) {
+            String costStr =
+                match.group(1)!.replaceAll(',', ''); // Remove commas
+            total += double.tryParse(costStr) ?? 0;
+          }
+        }
+      }
+    });
+    return total;
   }
 
   void _deleteMenu(int id) async {
@@ -29,7 +62,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _historyFuture = ApiService.fetchSavedMenus();
       });
 
-      // Show SnackBar using Translation
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -48,19 +80,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    // Load the data as soon as the screen opens
     _historyFuture = ApiService.fetchSavedMenus();
   }
 
   @override
   Widget build(BuildContext context) {
-    // ValueListenableBuilder listens to language changes automatically
     return ValueListenableBuilder<String>(
       valueListenable: currentLanguage,
       builder: (context, lang, child) {
         return Scaffold(
           appBar: AppBar(
-            title: Text(t('history_title')), // Translated Title
+            title: Text(t('history_title')),
             backgroundColor: Colors.deepPurple,
             foregroundColor: Colors.white,
           ),
@@ -72,7 +102,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               } else if (snapshot.hasError) {
                 return Center(child: Text("Error: ${snapshot.error}"));
               } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                // Translated "No Menus" text
                 return Center(child: Text(t('no_menus')));
               }
 
@@ -83,6 +112,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 padding: const EdgeInsets.all(10),
                 itemBuilder: (context, index) {
                   final menu = menus[index];
+
+                  // 1. Decode the JSON immediately to calculate cost for display
+                  String jsonString = menu['menu_json'];
+                  Map<String, dynamic> decodedMenu = jsonDecode(jsonString);
+
+                  // 2. Calculate Real Cost vs Budget
+                  double aiCost = _calculateItemWiseTotal(decodedMenu);
+                  double budget = (menu['budget'] as num).toDouble();
+                  double displayCost = aiCost > 0 ? aiCost : budget;
+
                   return Card(
                     margin: const EdgeInsets.only(bottom: 10),
                     child: ListTile(
@@ -91,13 +130,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         child: const Icon(Icons.restaurant_menu,
                             color: Colors.deepPurple),
                       ),
-                      // Event Type and Cuisine come from DB (usually English), keeping as is
                       title: Text("${menu['event_type']} (${menu['cuisine']})"),
 
-                      // Translated "Guests" label
-                      subtitle: Text("${menu['guest_count']} ${t('guests')}"),
+                      // Updated Subtitle to show Real Cost
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("${menu['guest_count']} ${t('guests')}"),
+                          Text(
+                            "Rate: ₹${displayCost.toStringAsFixed(0)} / plate",
+                            style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: aiCost > 0
+                                    ? Colors.green
+                                    : Colors.grey[700]),
+                          ),
+                        ],
+                      ),
 
-                      // Trailing Actions (Delete & Arrow)
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -111,14 +161,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       ),
 
                       onTap: () {
-                        // 1. Get the stored JSON string
-                        String jsonString = menu['menu_json'];
-
-                        // 2. Convert it back to a Map (List of food)
-                        Map<String, dynamic> decodedMenu =
-                            jsonDecode(jsonString);
-
-                        // 3. Navigate to the Detail Screen
+                        // 3. Navigate to Detail Screen with CORRECT COST
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -126,10 +169,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               fullMenu: decodedMenu,
                               eventType: menu['event_type'],
                               cuisine: menu['cuisine'],
-                              // Pass Real Data
                               menuId: menu['id'],
                               guestCount: menu['guest_count'],
-                              budgetPerPlate: menu['budget'],
+                              // ✅ FIX: Pass the Calculated AI Cost instead of the raw budget
+                              budgetPerPlate: displayCost.toInt(),
                             ),
                           ),
                         );
