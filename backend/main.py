@@ -8,7 +8,7 @@ from sqlmodel import SQLModel, Field, create_engine, Session, select
 from collections import Counter # ✅ Added for Cuisine Counting
 
 # --- CONFIGURATION ---
-GENAI_API_KEY = "AIzaSyDDNwfkYt0QCiT85I91zvBylSknAVHzYJw"
+GENAI_API_KEY = "AIzaSyCX0R8vy8jHF5qH_GBruGvJlnDbazFcTJM"
 genai.configure(api_key=GENAI_API_KEY)
 
 app = FastAPI()
