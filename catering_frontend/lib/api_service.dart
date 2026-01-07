@@ -2,9 +2,64 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
+  // ⚠️ CHANGE THIS IP IF NEEDED (Use 10.0.2.2 for Android Emulator)
   static const String baseUrl = "http://10.221.71.64:8000";
 
-  // --- 1. GENERATE MENU ---
+  // --- STORE CURRENT USER ID ---
+  static int? currentUserId;
+
+  // --- 1. AUTHENTICATION (UPDATED) ---
+
+  // Returns NULL if success, or Error Message if failed
+  static Future<String?> login(String username, String password) async {
+    final url = Uri.parse('$baseUrl/login');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "username": username,
+          "password": password,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // ✅ SAVE THE USER ID
+        currentUserId = data['user_id'];
+        return null; // Success
+      } else {
+        return "Invalid Credentials";
+      }
+    } catch (e) {
+      return "Connection Error: $e";
+    }
+  }
+
+  static Future<String?> register(String username, String password) async {
+    final url = Uri.parse('$baseUrl/register');
+    try {
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "username": username,
+          "password": password,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return null; // Success
+      } else {
+        final body = jsonDecode(response.body);
+        return body['detail'] ?? "Registration Failed";
+      }
+    } catch (e) {
+      return "Connection Error: $e";
+    }
+  }
+
+  // --- 2. GENERATE MENU (No Change needed here) ---
   static Future<Map<String, dynamic>> generateMenu({
     required String eventType,
     required String cuisine,
@@ -14,7 +69,6 @@ class ApiService {
   }) async {
     final url = Uri.parse('$baseUrl/generate-menu');
 
-    // Using budget_per_plate as per your request
     final Map<String, dynamic> requestBody = {
       "event_type": eventType,
       "cuisine": cuisine,
@@ -45,8 +99,7 @@ class ApiService {
     }
   }
 
-  // --- 2. SAVE MENU (CRITICAL FIX) ---
-  // I changed 'void' to 'Map<String, dynamic>' so we can get the NEW ID.
+  // --- 3. SAVE MENU (UPDATED with user_id) ---
   static Future<Map<String, dynamic>> saveMenuToDatabase({
     required String eventType,
     required String cuisine,
@@ -54,10 +107,13 @@ class ApiService {
     required int budget,
     required Map<String, dynamic> fullMenu,
   }) async {
+    if (currentUserId == null) throw Exception("User not logged in");
+
     final url = Uri.parse('$baseUrl/save-menu');
     final String menuJsonString = jsonEncode(fullMenu);
 
     final Map<String, dynamic> body = {
+      "user_id": currentUserId, // <--- SEND USER ID
       "event_type": eventType,
       "cuisine": cuisine,
       "guest_count": guestCount,
@@ -73,7 +129,6 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        // RETURN THE RESPONSE (This contains the New ID)
         return jsonDecode(response.body);
       } else {
         throw Exception("Failed to save: ${response.body}");
@@ -83,9 +138,12 @@ class ApiService {
     }
   }
 
-  // --- 3. FETCH SAVED MENUS ---
+  // --- 4. FETCH SAVED MENUS (UPDATED with user_id) ---
   static Future<List<dynamic>> fetchSavedMenus() async {
-    final url = Uri.parse('$baseUrl/get-menus');
+    if (currentUserId == null) return [];
+
+    final url =
+        Uri.parse('$baseUrl/get-menus?user_id=$currentUserId'); // <--- FILTER
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -98,7 +156,7 @@ class ApiService {
     }
   }
 
-  // --- 4. DELETE MENU ---
+  // --- 5. DELETE MENU ---
   static Future<void> deleteMenu(int id) async {
     final url = Uri.parse('$baseUrl/delete-menu/$id');
     try {
@@ -111,9 +169,12 @@ class ApiService {
     }
   }
 
-  // --- 5. DASHBOARD STATS ---
+  // --- 6. DASHBOARD STATS (UPDATED with user_id) ---
   static Future<Map<String, dynamic>> fetchDashboardStats() async {
-    final url = Uri.parse('$baseUrl/dashboard-stats');
+    if (currentUserId == null) return {};
+
+    final url = Uri.parse(
+        '$baseUrl/dashboard-stats?user_id=$currentUserId'); // <--- FILTER
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
@@ -136,7 +197,7 @@ class ApiService {
     }
   }
 
-  // --- 6. SAVE PRICING ---
+  // --- 7. SAVE PRICING (UPDATED with user_id) ---
   static Future<void> savePricing({
     required int menuId,
     required double baseCost,
@@ -145,8 +206,11 @@ class ApiService {
     required double profitMargin,
     required double finalAmount,
   }) async {
+    if (currentUserId == null) throw Exception("User not logged in");
+
     final url = Uri.parse('$baseUrl/save-pricing');
     final Map<String, dynamic> body = {
+      "user_id": currentUserId, // <--- SEND USER ID
       "menu_id": menuId,
       "base_cost": baseCost,
       "labor_cost": laborCost,
@@ -169,7 +233,7 @@ class ApiService {
     }
   }
 
-  // --- 7. SAVE INVOICE ---
+  // --- 8. SAVE INVOICE (UPDATED with user_id) ---
   static Future<void> saveInvoice({
     required int menuId,
     required String clientName,
@@ -179,8 +243,11 @@ class ApiService {
     required double grandTotal,
     required String eventDate,
   }) async {
+    if (currentUserId == null) throw Exception("User not logged in");
+
     final url = Uri.parse('$baseUrl/save-invoice');
     final Map<String, dynamic> body = {
+      "user_id": currentUserId, // <--- SEND USER ID
       "menu_id": menuId,
       "client_name": clientName,
       "final_amount": finalAmount,
@@ -206,9 +273,12 @@ class ApiService {
     }
   }
 
-  // --- 8. FETCH INVOICES ---
+  // --- 9. FETCH INVOICES (UPDATED with user_id) ---
   static Future<List<dynamic>> fetchInvoices() async {
-    final url = Uri.parse('$baseUrl/get-invoices');
+    if (currentUserId == null) return [];
+
+    final url = Uri.parse(
+        '$baseUrl/get-invoices?user_id=$currentUserId'); // <--- FILTER
     final response = await http.get(url);
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -217,7 +287,7 @@ class ApiService {
     }
   }
 
-  // --- 9. ADD PAYMENT ---
+  // --- 10. ADD PAYMENT ---
   static Future<void> addPayment(
       int invoiceId, double amount, String mode) async {
     final url = Uri.parse('$baseUrl/add-payment');
@@ -234,7 +304,7 @@ class ApiService {
     if (response.statusCode != 200) throw Exception("Failed to add payment");
   }
 
-  // --- 10. FETCH PAYMENTS FOR INVOICE ---
+  // --- 11. FETCH PAYMENTS FOR INVOICE ---
   static Future<List<dynamic>> fetchPaymentsForInvoice(int invoiceId) async {
     final url = Uri.parse('$baseUrl/get-payments/$invoiceId');
     final response = await http.get(url);
@@ -245,7 +315,7 @@ class ApiService {
     }
   }
 
-  // --- 11. UPDATE ORDER STATUS ---
+  // --- 12. UPDATE ORDER STATUS ---
   static Future<void> updateOrderStatus(int id, String status) async {
     final url =
         Uri.parse('$baseUrl/update-order-status?invoice_id=$id&status=$status');

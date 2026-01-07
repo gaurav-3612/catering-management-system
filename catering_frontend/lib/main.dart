@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/dashboard_screen.dart';
 import 'notification_service.dart';
+import 'screens/login_screen.dart';
 
 // GLOBAL NOTIFIER for Language Change
 ValueNotifier<String> currentLanguage = ValueNotifier<String>('en');
@@ -35,7 +36,7 @@ class CateringApp extends StatelessWidget {
               centerTitle: true,
             ),
           ),
-          home: const DashboardScreen(),
+          home: const LoginScreen(),
         );
       },
     );

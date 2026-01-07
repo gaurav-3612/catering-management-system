@@ -5,6 +5,7 @@ import '../main.dart';
 import 'menu_generator_screen.dart';
 import 'history_screen.dart';
 import 'payment_ledger_screen.dart';
+import 'login_screen.dart'; // ✅ Import Login Screen
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -30,6 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadStats() async {
+    // ApiService automatically sends the currentUserId now!
     final data = await ApiService.fetchDashboardStats();
     final invoices = await ApiService.fetchInvoices();
 
@@ -51,52 +53,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return AppTranslations.get(lang, key);
   }
 
+  // ✅ LOGOUT FUNCTION
+  void _logout() {
+    // 1. Clear the Session ID
+    ApiService.currentUserId = null;
+
+    // 2. Navigate back to Login and remove Dashboard from history
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 1. Wrap the UI in ValueListenableBuilder
-    // This makes the screen rebuild AUTOMATICALLY when language changes
     return ValueListenableBuilder<String>(
       valueListenable: currentLanguage,
       builder: (context, lang, child) {
         return Scaffold(
           backgroundColor: Colors.grey.shade100,
           appBar: AppBar(
-            title: Text(t('dashboard_title', lang)), // Translated
+            title: Text(t('dashboard_title', lang)),
             backgroundColor: Colors.deepPurple,
             foregroundColor: Colors.white,
             elevation: 0,
             centerTitle: false,
             actions: [
               // LANGUAGE DROPDOWN
-              Padding(
-                padding: const EdgeInsets.only(right: 16.0),
-                child: DropdownButton<String>(
-                  value: lang, // Use the 'lang' from the builder
-                  dropdownColor: Colors.deepPurple,
-                  icon: const Icon(Icons.language, color: Colors.white),
-                  underline: const SizedBox(),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'en',
-                        child: Text("English",
-                            style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(
-                        value: 'hi',
-                        child: Text("हिंदी",
-                            style: TextStyle(color: Colors.white))),
-                    DropdownMenuItem(
-                        value: 'te',
-                        child: Text("తెలుగు",
-                            style: TextStyle(color: Colors.white))),
-                  ],
-                  onChanged: (String? val) {
-                    if (val != null) {
-                      // This triggers the ValueListenableBuilder to rebuild
-                      currentLanguage.value = val;
-                    }
-                  },
-                ),
-              )
+              DropdownButton<String>(
+                value: lang,
+                dropdownColor: Colors.deepPurple,
+                icon: const Icon(Icons.language, color: Colors.white),
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(
+                      value: 'en',
+                      child: Text("English",
+                          style: TextStyle(color: Colors.white))),
+                  DropdownMenuItem(
+                      value: 'hi',
+                      child:
+                          Text("हिंदी", style: TextStyle(color: Colors.white))),
+                  DropdownMenuItem(
+                      value: 'te',
+                      child: Text("తెలుగు",
+                          style: TextStyle(color: Colors.white))),
+                  DropdownMenuItem(
+                      value: 'ta',
+                      child:
+                          Text("தமிழ்", style: TextStyle(color: Colors.white))),
+                ],
+                onChanged: (String? val) {
+                  if (val != null) {
+                    currentLanguage.value = val;
+                  }
+                },
+              ),
+              const SizedBox(width: 10),
+
+              // ✅ LOGOUT BUTTON
+              IconButton(
+                icon: const Icon(Icons.logout),
+                tooltip: "Logout",
+                onPressed: _logout,
+              ),
+              const SizedBox(width: 10),
             ],
           ),
           body: RefreshIndicator(

@@ -1,12 +1,13 @@
 import os
 import json
-from fastapi import FastAPI, HTTPException
+import sqlite3
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 import google.generativeai as genai
 from sqlmodel import SQLModel, Field, create_engine, Session, select
 
 # --- CONFIGURATION ---
-GENAI_API_KEY = "AIzaSyBCQfDDOhDfgE8Jk-VAnpiW8TnjQya7dP0"
+GENAI_API_KEY = "AIzaSyCraAVS-DscO97p8ZMKEd2HfLF9A-xdsKc"
 genai.configure(api_key=GENAI_API_KEY)
 
 app = FastAPI()
@@ -16,9 +17,10 @@ sqlite_file_name = "catering.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 engine = create_engine(sqlite_url)
 
-# --- MODELS ---
+# --- MODELS (Updated with user_id) ---
 class SavedMenu(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int # <--- NEW: Links data to specific user
     event_type: str
     cuisine: str
     guest_count: int
@@ -28,6 +30,7 @@ class SavedMenu(SQLModel, table=True):
 class SavedPricing(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     menu_id: int
+    user_id: int # <--- NEW
     base_cost: float
     labor_cost: float
     transport_cost: float
@@ -36,6 +39,7 @@ class SavedPricing(SQLModel, table=True):
 
 class SavedInvoice(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
+    user_id: int # <--- NEW
     menu_id: int
     client_name: str
     final_amount: float
@@ -53,10 +57,26 @@ class SavedPayment(SQLModel, table=True):
     payment_date: str
     payment_mode: str
 
-# --- STARTUP ---
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+# --- DB INIT ---
+def init_db():
+    SQLModel.metadata.create_all(engine)
+    conn = sqlite3.connect("catering.db")
+    cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        username TEXT UNIQUE, 
+        password TEXT
+    )''')
+    conn.commit()
+    conn.close()
+
 @app.on_event("startup")
 def on_startup():
-    SQLModel.metadata.create_all(engine)
+    init_db()
 
 # --- INPUT MODELS ---
 class MenuRequest(BaseModel):
@@ -67,10 +87,9 @@ class MenuRequest(BaseModel):
     dietary_preference: str
     special_requirements: str = "None"
 
-# --- MENU GENERATION (FIXED) ---
+# --- MENU GENERATION ---
 @app.post("/generate-menu")
 async def generate_menu(request: MenuRequest):
-    # FIX: We now actually pass the user's choices into the prompt!
     prompt = f"""
     Act as a professional catering chef.
     Generate a {request.dietary_preference} menu for a {request.event_type}.
@@ -82,32 +101,18 @@ async def generate_menu(request: MenuRequest):
     IMPORTANT: 
     - If Dietary Preference is 'Veg', DO NOT include any meat, egg, or fish items.
     - If 'Jain', DO NOT include onion, garlic, or root vegetables.
-    - Provide 3-5 items per category based on the budget.
-
-    Output strictly in valid JSON format with these exact keys:
-    {{
-      "starters": ["item1", "item2"],
-      "main_course": ["item1", "item2"],
-      "breads": ["item1", "item2"],
-      "rice": ["item1", "item2"],
-      "desserts": ["item1", "item2"],
-      "beverages": ["item1", "item2"]
-    }}
-    Do not add any markdown formatting like ```json ... ```. Just the raw JSON string.
+    - Output strictly in valid JSON format with keys: starters, main_course, breads, rice, desserts, beverages.
+    Do not add markdown formatting.
     """
-
     try:
         model = genai.GenerativeModel('gemini-flash-latest')
         response = model.generate_content(prompt)
-        
-        # Cleanup potential markdown if the AI adds it anyway
         raw_text = response.text.replace("```json", "").replace("```", "").strip()
-        
         return {"menu_data": raw_text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- MENU CRUD ---
+# --- MENU CRUD (FILTERED BY USER) ---
 @app.post("/save-menu")
 def save_menu(menu: SavedMenu):
     with Session(engine) as session:
@@ -117,9 +122,10 @@ def save_menu(menu: SavedMenu):
         return {"status": "success", "id": menu.id}
 
 @app.get("/get-menus")
-def get_menus():
+def get_menus(user_id: int = Query(...)): # <--- Require user_id
     with Session(engine) as session:
-        return session.exec(select(SavedMenu)).all()
+        # Only return menus belonging to this user
+        return session.exec(select(SavedMenu).where(SavedMenu.user_id == user_id)).all()
 
 @app.delete("/delete-menu/{menu_id}")
 def delete_menu(menu_id: int):
@@ -131,16 +137,17 @@ def delete_menu(menu_id: int):
         session.commit()
         return {"status": "deleted"}
 
-# --- DASHBOARD ---
+# --- DASHBOARD (FILTERED) ---
 @app.get("/dashboard-stats")
-def get_dashboard_stats():
+def get_dashboard_stats(user_id: int = Query(...)): # <--- Require user_id
     with Session(engine) as session:
-        menus = session.exec(select(SavedMenu)).all()
+        # Filter stats by user_id
+        menus = session.exec(select(SavedMenu).where(SavedMenu.user_id == user_id)).all()
         return {
             "total_events": len(menus),
             "total_guests": sum(m.guest_count for m in menus),
-            "projected_revenue": "₹0",
-            "top_cuisine": "N/A"
+            "projected_revenue": "₹0", 
+            "top_cuisine": "Multi-Cuisine"
         }
 
 # --- PRICING ---
@@ -162,36 +169,29 @@ def save_invoice(invoice: SavedInvoice):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- INVOICE & PAYMENTS ---
+# --- INVOICE & PAYMENTS (FILTERED) ---
 @app.get("/get-invoices")
-def get_invoices():
+def get_invoices(user_id: int = Query(...)): # <--- Require user_id
     with Session(engine) as session:
-        return session.exec(select(SavedInvoice)).all()
+        return session.exec(select(SavedInvoice).where(SavedInvoice.user_id == user_id)).all()
 
 @app.post("/add-payment")
 def add_payment(payment: SavedPayment):
     with Session(engine) as session:
         session.add(payment)
         session.commit()
-
         invoice = session.get(SavedInvoice, payment.invoice_id)
-        payments = session.exec(
-            select(SavedPayment).where(SavedPayment.invoice_id == payment.invoice_id)
-        ).all()
-
+        payments = session.exec(select(SavedPayment).where(SavedPayment.invoice_id == payment.invoice_id)).all()
         total_paid = sum(p.amount for p in payments)
         invoice.is_paid = total_paid >= invoice.grand_total
         session.add(invoice)
         session.commit()
-
         return {"status": "success"}
 
 @app.get("/get-payments/{invoice_id}")
 def get_payments(invoice_id: int):
     with Session(engine) as session:
-        return session.exec(
-            select(SavedPayment).where(SavedPayment.invoice_id == invoice_id)
-        ).all()
+        return session.exec(select(SavedPayment).where(SavedPayment.invoice_id == invoice_id)).all()
 
 @app.post("/update-order-status")
 def update_order_status(invoice_id: int, status: str):
@@ -203,6 +203,30 @@ def update_order_status(invoice_id: int, status: str):
         session.commit()
         return {"status": "updated"}
 
-@app.get("/")
-def root():
-    return {"status": "Catering Backend Active"}
+# --- AUTH ---
+@app.post("/register")
+def register_user(user: UserLogin):
+    conn = sqlite3.connect("catering.db")
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (user.username, user.password))
+        conn.commit()
+        return {"message": "User registered successfully"}
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    finally:
+        conn.close()
+
+@app.post("/login")
+def login_user(user: UserLogin):
+    conn = sqlite3.connect("catering.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (user.username, user.password))
+    data = cursor.fetchone()
+    conn.close()
+    
+    if data:
+        # We return the ID so the frontend can store it!
+        return {"message": "Login successful", "user_id": data[0], "username": data[1]}
+    else:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
