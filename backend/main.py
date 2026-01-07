@@ -5,10 +5,10 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 import google.generativeai as genai
 from sqlmodel import SQLModel, Field, create_engine, Session, select
-from collections import Counter # ✅ Added for Cuisine Counting
+from collections import Counter 
 
 # --- CONFIGURATION ---
-GENAI_API_KEY = "AIzaSyCX0R8vy8jHF5qH_GBruGvJlnDbazFcTJM"
+GENAI_API_KEY = "write gemini api key here"
 genai.configure(api_key=GENAI_API_KEY)
 
 app = FastAPI()
@@ -111,7 +111,7 @@ async def generate_menu(request: MenuRequest):
     prompt = f"""
     Act as a professional catering chef.
     
-    🛑 STRICT CONSTRAINTS (READ FIRST):
+     STRICT CONSTRAINTS (READ FIRST):
     1. **PRICING:** Every item MUST include an estimated cost in this exact format: "Item Name - ₹Cost" (e.g., "Dal Makhani - ₹40").
     2. **BUDGET:** The TOTAL sum of all item costs MUST NOT EXCEED ₹{request.budget_per_plate}.
        - If your selected items are too expensive, replace them with cheaper options to fit the budget.
@@ -144,7 +144,7 @@ async def regenerate_section(req: RegenerateRequest):
     prompt = f"""
     Act as a professional catering chef.
     
-    🛑 STRICT INSTRUCTION:
+     STRICT INSTRUCTION:
     - Provide 5 NEW options for the "{req.section}" section.
     - **EVERY ITEM MUST HAVE A PRICE.**
     - Format: "Item Name - ₹Cost"
@@ -192,7 +192,6 @@ def delete_menu(menu_id: int):
         session.commit()
         return {"status": "deleted"}
 
-# ✅ UPDATED DASHBOARD STATS LOGIC
 @app.get("/dashboard-stats")
 def get_dashboard_stats(user_id: int = Query(...)):
     with Session(engine) as session:
