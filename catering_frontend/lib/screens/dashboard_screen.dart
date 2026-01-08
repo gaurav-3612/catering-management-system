@@ -7,6 +7,7 @@ import 'history_screen.dart';
 import 'payment_ledger_screen.dart';
 import 'login_screen.dart';
 import 'settings_screen.dart';
+import 'pending_orders_screen.dart'; // Import Screen 5
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -33,12 +34,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadStats() async {
     final data = await ApiService.fetchDashboardStats();
-    final invoices = await ApiService.fetchInvoices();
+
+    // Fetch pending orders instead of all invoices for "Upcoming" list
+    List<dynamic> pending = await ApiService.fetchPendingOrders();
+
+    // Auto-sorting logic: Sort by Upcoming Date
+    pending.sort((a, b) {
+      DateTime dateA = DateTime.tryParse(a['event_date']) ?? DateTime.now();
+      DateTime dateB = DateTime.tryParse(b['event_date']) ?? DateTime.now();
+      return dateA.compareTo(dateB);
+    });
 
     if (mounted) {
       setState(() {
         stats = data;
-        _recentOrders = invoices;
+        _recentOrders = pending;
       });
     }
   }
@@ -122,7 +132,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 },
               ),
 
-              // ✅ LOGOUT BUTTON
               IconButton(
                 icon: const Icon(Icons.logout),
                 tooltip: "Logout",
@@ -215,9 +224,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             builder: (_) => const PaymentLedgerScreen())),
                   ),
                   const SizedBox(height: 30),
-                  Text(t('upcoming_orders', lang),
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold)),
+
+                  // Navigation Link to Screen 5 (Pending Orders)
+                  InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (context) => const PendingOrdersScreen()),
+                      ).then((_) {
+                        // [FIX] This refreshes the Dashboard when you return!
+                        _loadStats();
+                      });
+                    },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(t('upcoming_orders', lang),
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.bold)),
+                        const Row(
+                          children: [
+                            Text("View All ",
+                                style: TextStyle(
+                                    color: Colors.deepPurple,
+                                    fontWeight: FontWeight.bold)),
+                            Icon(Icons.arrow_forward_ios,
+                                size: 16, color: Colors.deepPurple),
+                          ],
+                        )
+                      ],
+                    ),
+                  ),
+
                   const SizedBox(height: 15),
                   if (_recentOrders.isEmpty)
                     Container(
@@ -230,7 +269,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Text("No upcoming orders found.",
                               style: TextStyle(color: Colors.grey))),
                     ),
-                  ..._recentOrders.map((order) {
+                  ..._recentOrders.take(3).map((order) {
+                    // Taking top 3 for preview
                     bool isCompleted = order['order_status'] == "Completed";
                     return Card(
                       margin: const EdgeInsets.only(bottom: 10),
@@ -241,8 +281,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: Icon(Icons.event,
                               color: isCompleted ? Colors.white : Colors.blue),
                         ),
-                        title: Text(order['client_name'] ?? "Unknown"),
-                        subtitle: Text("Date: ${order['event_date']}"),
+                        title: Text(
+                            "${order['event_type'] ?? 'Event'} - ${order['client_name'] ?? 'Client'}"),
+                        subtitle: Text(
+                            "Date: ${order['event_date']} | Guests: ${order['guest_count'] ?? '-'}"),
                         trailing: isCompleted
                             ? const Icon(Icons.check_circle,
                                 color: Colors.green)

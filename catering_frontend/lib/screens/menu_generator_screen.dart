@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api_service.dart';
-import 'invoice_screen.dart';
-import 'history_screen.dart';
+import 'pricing_screen.dart';
 import '../translations.dart';
 import '../main.dart';
 
@@ -13,16 +12,17 @@ class MenuGeneratorScreen extends StatefulWidget {
 }
 
 class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
-  // Controllers
+  // Input Controllers
   final TextEditingController _guestsController = TextEditingController();
   final TextEditingController _budgetController = TextEditingController();
+  final TextEditingController _specialReqController = TextEditingController();
 
-  // Dropdown Initial Values
+  // Dropdown Values
   String _selectedEvent = 'Wedding';
   String _selectedCuisine = 'North Indian';
   String _selectedDiet = 'Veg';
 
-  // State variables
+  // State Variables
   bool _isLoading = false;
   Map<String, dynamic>? _generatedMenu;
   int? _savedMenuId;
@@ -35,13 +35,20 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
   void dispose() {
     _guestsController.dispose();
     _budgetController.dispose();
+    _specialReqController.dispose();
     super.dispose();
   }
 
-  // --- API CALLS ---
-
+  // --- 1. GENERATE MENU (Calls AI) ---
   void _generateMenu() async {
     FocusScope.of(context).unfocus();
+
+    if (_guestsController.text.isEmpty || _budgetController.text.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t('enter_all_details'))));
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -56,6 +63,8 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         guestCount: int.tryParse(_guestsController.text) ?? 100,
         budget: int.tryParse(_budgetController.text) ?? 500,
         dietaryPreference: _selectedDiet,
+        // [FIX] Now passing the text from the controller!
+        specialRequirements: _specialReqController.text,
       );
 
       // Robust Parsing: Ensure all values are Lists
@@ -80,6 +89,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     }
   }
 
+  // --- 2. REGENERATE SECTION ---
   void _regenerateSectionItems(String sectionKey) async {
     setState(() => _isLoading = true);
     try {
@@ -114,9 +124,11 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     }
   }
 
-  void _saveMenu() async {
+  // --- 3. SAVE & NAVIGATE TO PRICING ---
+  void _saveAndProceed() async {
     if (_generatedMenu == null) return;
     try {
+      // 1. Save to Database
       final response = await ApiService.saveMenuToDatabase(
         eventType: _selectedEvent,
         cuisine: _selectedCuisine,
@@ -129,23 +141,43 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         _savedMenuId = response['id'];
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(t('menu_saved')), backgroundColor: Colors.green));
+      // 2. Calculate initial Base Cost estimate to pass to Pricing
+      double estimatedBaseCost = _calculateItemWiseTotal();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(t('menu_saved')), backgroundColor: Colors.green));
+
+        // 3. Navigate to Pricing Screen (Screen 2)
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PricingScreen(
+              menuId: _savedMenuId!,
+              guestCount: int.tryParse(_guestsController.text) ?? 100,
+              baseFoodCost: estimatedBaseCost, // Passes the AI's estimate
+            ),
+          ),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Failed: $e")));
+          .showSnackBar(SnackBar(content: Text("Failed to save: $e")));
     }
   }
 
   // --- EDITING LOGIC ---
-
   void _editItem(String section, int index, String oldName) {
     TextEditingController editCtrl = TextEditingController(text: oldName);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Edit Dish"),
-        content: TextField(controller: editCtrl),
+        content: TextField(
+            controller: editCtrl,
+            // [FIX] Updated hint to show you can use dashes
+            decoration:
+                const InputDecoration(helperText: "Format: Name - Cost")),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
@@ -178,7 +210,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         title: Text("${t('add_item')} $section"),
         content: TextField(
             controller: addCtrl,
-            decoration: const InputDecoration(hintText: "Dish Name - ₹Cost")),
+            decoration: const InputDecoration(hintText: "Dish Name - Cost")),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
@@ -200,12 +232,11 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
     );
   }
 
-  // --- CALCULATION LOGIC ---
+  // --- [FIXED] SMART CALCULATION LOGIC ---
   double _calculateItemWiseTotal() {
     double total = 0;
     if (_generatedMenu == null) return 0;
 
-    // Only calculate for known food sections to avoid errors
     List<String> validSections = [
       "starters",
       "main_course",
@@ -220,15 +251,16 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
         for (var item in value) {
           String s = item.toString();
 
-          // Improved Regex to handle "₹ 50", "Rs.50", "50 INR"
-          RegExp regExp = RegExp(r'(?:₹|Rs\.?|INR)\s*([\d,]+(?:\.\d+)?)',
+          // [FIX] Improved Regex to catch prices separated by '-', ':', '₹', or 'Rs.'
+          // Captures: "Item - 200", "Item: 200", "Item ₹200"
+          RegExp regExp = RegExp(r'(?:₹|Rs\.?|INR|[-–:])\s*([\d,]+(?:\.\d+)?)',
               caseSensitive: false);
           Match? match = regExp.firstMatch(s);
 
           if (match != null) {
-            String costStr =
-                match.group(1)!.replaceAll(',', ''); // Remove commas
-            total += double.tryParse(costStr) ?? 0;
+            String costStr = match.group(1)!.replaceAll(',', '');
+            double val = double.tryParse(costStr) ?? 0;
+            total += val;
           }
         }
       }
@@ -237,25 +269,19 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
   }
 
   // --- UI BUILD ---
-
   @override
   Widget build(BuildContext context) {
-    // 1. Calculate Real AI Cost (Sum of all items)
+    int guests = int.tryParse(_guestsController.text) ?? 100;
+
+    // This updates LIVE whenever you edit items because setState re-runs build()
     double aiCostPerPlate = _calculateItemWiseTotal();
 
-    // 2. Get User Inputs
-    int guests = int.tryParse(_guestsController.text) ?? 0;
     double userBudgetPerPlate = double.tryParse(_budgetController.text) ?? 0;
-
-    // 3. LOGIC: Use AI Cost if available (>0), else use User Budget
     double finalRatePerPlate =
         aiCostPerPlate > 0 ? aiCostPerPlate : userBudgetPerPlate;
-
-    // 4. Calculate Final Total Quote (Guests * Actual Rate)
     double totalInvoiceAmount = finalRatePerPlate * guests;
-
-    // 5. Check if Over Budget (Visual Warning)
-    bool isOverBudget = aiCostPerPlate > userBudgetPerPlate;
+    bool isOverBudget =
+        aiCostPerPlate > userBudgetPerPlate && aiCostPerPlate > 0;
 
     return ValueListenableBuilder<String>(
       valueListenable: currentLanguage,
@@ -268,13 +294,6 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
               title: Text(t('menu_generator_title')),
               backgroundColor: Colors.deepPurple,
               foregroundColor: Colors.white,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.history),
-                  onPressed: () => Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const HistoryScreen())),
-                ),
-              ],
             ),
             body: SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
@@ -328,6 +347,9 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                                       isNumber: true)),
                             ],
                           ),
+                          const SizedBox(height: 10),
+                          _buildTextField("Special Req. (Optional)",
+                              _specialReqController, Icons.notes),
                           const SizedBox(height: 20),
                           SizedBox(
                             width: double.infinity,
@@ -365,7 +387,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
 
                   // --- RESULTS SECTION ---
                   if (_generatedMenu != null) ...[
-                    // COST SUMMARY CARD
+                    // Budget Status Card
                     Container(
                       padding: const EdgeInsets.all(15),
                       decoration: BoxDecoration(
@@ -394,17 +416,14 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                  aiCostPerPlate > 0
-                                      ? "Actual Cost (AI):"
-                                      : "Estimated Cost:",
+                              Text("Actual Cost:",
                                   style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       color: isOverBudget
                                           ? Colors.red
                                           : Colors.black)),
                               Text(
-                                  "₹${finalRatePerPlate.toStringAsFixed(0)} / plate",
+                                  "₹${aiCostPerPlate.toStringAsFixed(0)} / plate",
                                   style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 18,
@@ -416,8 +435,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                           if (isOverBudget)
                             const Padding(
                               padding: EdgeInsets.only(top: 5),
-                              child: Text(
-                                  "⚠️ Cost exceeds budget! Remove items to reduce cost.",
+                              child: Text("⚠️ Cost exceeds budget!",
                                   style: TextStyle(
                                       color: Colors.red, fontSize: 12)),
                             ),
@@ -425,14 +443,14 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text("Total Quote ($guests guests):",
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold)),
+                              const Text("Total Quote:",
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
                               Text("₹${totalInvoiceAmount.toStringAsFixed(0)}",
                                   style: const TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: Colors.deepPurple,
-                                      fontSize: 20)),
+                                      fontSize: 20,
+                                      color: Colors.deepPurple)),
                             ],
                           ),
                         ],
@@ -440,43 +458,23 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
                     ),
                     const SizedBox(height: 20),
 
-                    // BUTTONS
+                    // Navigation Buttons
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        Text(t('suggested_menu'),
-                            style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.deepPurple)),
-                        if (_savedMenuId == null)
-                          IconButton(
-                            icon: const Icon(Icons.save,
-                                color: Colors.deepPurple),
-                            onPressed: _saveMenu,
-                            tooltip: t('save_history'),
-                          )
-                        else
-                          IconButton(
-                            icon: const Icon(Icons.receipt_long,
-                                color: Colors.green, size: 30),
-                            tooltip: "Generate Invoice",
-                            onPressed: () {
-                              // ✅ Passes the ACTUAL Calculated Total
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => InvoiceScreen(
-                                    menuId: _savedMenuId!,
-                                    baseAmount: totalInvoiceAmount,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                        ElevatedButton.icon(
+                          onPressed: _saveAndProceed,
+                          icon: const Icon(Icons.arrow_forward),
+                          label: Text(t('save_next')),
+                          style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
+
+                    // Menu Categories
                     _buildEditableSection("starters", t('starters')),
                     _buildEditableSection("main_course", t('main_course')),
                     _buildEditableSection("breads", t('breads')),
@@ -510,6 +508,7 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
               IconButton(
                 icon: const Icon(Icons.refresh, color: Colors.orange),
                 onPressed: () => _regenerateSectionItems(jsonKey),
+                tooltip: "Regenerate",
               ),
           ],
         ),
@@ -518,25 +517,28 @@ class _MenuGeneratorScreenState extends State<MenuGeneratorScreen> {
           ...items.asMap().entries.map((entry) {
             int idx = entry.key;
             String rawText = entry.value.toString();
-            String name = rawText;
-            String price = "";
 
-            // Display Parse Logic
-            RegExp regExp = RegExp(r'(.*)((?:₹|Rs\.?|INR)\s*[\d,]+(?:\.\d+)?)',
+            String displayName = rawText;
+            String displayPrice = "";
+
+            // [FIX] Updated display logic to match calculation logic
+            RegExp regExp = RegExp(
+                r'(.*)((?:₹|Rs\.?|INR|[-–:])\s*[\d,]+(?:\.\d+)?)',
                 caseSensitive: false);
             Match? match = regExp.firstMatch(rawText);
 
             if (match != null) {
-              name = match.group(1)?.replaceAll('-', '').trim() ?? rawText;
-              price = match.group(2) ?? "";
+              displayName =
+                  match.group(1)?.replaceAll('-', '').trim() ?? rawText;
+              displayPrice = match.group(2) ?? "";
             }
 
             return ListTile(
               dense: true,
               leading: const Icon(Icons.circle, size: 8, color: Colors.green),
-              title: Text(name),
-              subtitle: price.isNotEmpty
-                  ? Text(price,
+              title: Text(displayName),
+              subtitle: displayPrice.isNotEmpty
+                  ? Text(displayPrice,
                       style: const TextStyle(
                           color: Colors.green, fontWeight: FontWeight.bold))
                   : null,

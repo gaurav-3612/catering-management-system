@@ -4,7 +4,7 @@ import 'db_helper.dart';
 
 class ApiService {
   // (10.0.2.2 for Android Emulator, Local IP for Real Device)
-  static const String baseUrl = "http://10.221.71.64:8000";
+  static const String baseUrl = "http://10.76.88.64:8000";
 
   static int? currentUserId;
 
@@ -30,7 +30,6 @@ class ApiService {
     }
   }
 
-  // Clear session logic
   static void logout() {
     currentUserId = null;
     DatabaseHelper.instance.clearAll();
@@ -52,72 +51,61 @@ class ApiService {
     }
   }
 
-  // --- 2. FETCH MENUS (WITH OFFLINE CACHING) ---
+  // --- 2. FETCH MENUS ---
   static Future<List<dynamic>> fetchSavedMenus() async {
     if (currentUserId == null) return [];
-
     try {
-      // A. Try Network
       final url = Uri.parse('$baseUrl/get-menus?user_id=$currentUserId');
       final response = await http.get(url);
-
       if (response.statusCode == 200) {
         List<dynamic> data = jsonDecode(response.body);
-
-        // B. Save to Local DB
         await DatabaseHelper.instance.cacheMenus(currentUserId!, data);
-        print(" Menus fetched from Server & Cached");
         return data;
       } else {
         throw Exception("Server Error");
       }
     } catch (e) {
-      // C. Fallback to Local DB
-      print(" Network failed ($e). Loading cached menus...");
       return await DatabaseHelper.instance.getCachedMenus(currentUserId!);
     }
   }
 
-  // --- 3. FETCH INVOICES (WITH OFFLINE CACHING) ---
+  // --- 3. FETCH INVOICES ---
   static Future<List<dynamic>> fetchInvoices() async {
     if (currentUserId == null) return [];
-
     try {
       final url = Uri.parse('$baseUrl/get-invoices?user_id=$currentUserId');
       final response = await http.get(url);
-
       if (response.statusCode == 200) {
         List<dynamic> data = jsonDecode(response.body);
-
-        // Save to Local DB
         await DatabaseHelper.instance.cacheInvoices(currentUserId!, data);
-        print(" Invoices fetched from Server & Cached");
         return data;
       } else {
         throw Exception("Server Error");
       }
     } catch (e) {
-      print(" Network failed ($e). Loading cached invoices...");
       return await DatabaseHelper.instance.getCachedInvoices(currentUserId!);
     }
   }
 
-  // --- 4. GENERATE MENU ---
+  // --- 4. GENERATE MENU (UPDATED) ---
   static Future<Map<String, dynamic>> generateMenu({
     required String eventType,
     required String cuisine,
     required int guestCount,
     required int budget,
     required String dietaryPreference,
+    String specialRequirements = "None", // [FIXED] Added Parameter
   }) async {
     final url = Uri.parse('$baseUrl/generate-menu');
+
+    // [FIXED] Passed parameter to request body
     final Map<String, dynamic> requestBody = {
       "event_type": eventType,
       "cuisine": cuisine,
       "guest_count": guestCount,
       "budget_per_plate": budget,
       "dietary_preference": dietaryPreference,
-      "special_requirements": "None"
+      "special_requirements": specialRequirements
     };
 
     try {
@@ -158,21 +146,17 @@ class ApiService {
       "current_items": currentItems
     };
 
-    try {
-      final response = await http.post(
-        url,
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode(body),
-      );
+    final response = await http.post(
+      url,
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(body),
+    );
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return List<String>.from(data['new_items']);
-      } else {
-        throw Exception("Failed to regenerate");
-      }
-    } catch (e) {
-      throw Exception("Connection Error");
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<String>.from(data['new_items']);
+    } else {
+      throw Exception("Failed to regenerate");
     }
   }
 
@@ -185,17 +169,14 @@ class ApiService {
     required Map<String, dynamic> fullMenu,
   }) async {
     if (currentUserId == null) throw Exception("User not logged in");
-
     final url = Uri.parse('$baseUrl/save-menu');
-    final String menuJsonString = jsonEncode(fullMenu);
-
     final Map<String, dynamic> body = {
       "user_id": currentUserId,
       "event_type": eventType,
       "cuisine": cuisine,
       "guest_count": guestCount,
       "budget": budget,
-      "menu_json": menuJsonString
+      "menu_json": jsonEncode(fullMenu)
     };
 
     final response = await http.post(
@@ -211,7 +192,6 @@ class ApiService {
     }
   }
 
-  // --- 7. DELETE MENU ---
   static Future<void> deleteMenu(int id) async {
     final url = Uri.parse('$baseUrl/delete-menu/$id');
     await http.delete(url);
@@ -230,7 +210,7 @@ class ApiService {
     }
   }
 
-  // --- 9. SAVE PRICING ---
+  // --- 9. SAVING DATA ---
   static Future<void> savePricing({
     required int menuId,
     required double baseCost,
@@ -254,7 +234,6 @@ class ApiService {
         headers: {"Content-Type": "application/json"}, body: jsonEncode(body));
   }
 
-  // --- 10. SAVE INVOICE ---
   static Future<void> saveInvoice({
     required int menuId,
     required String clientName,
@@ -282,7 +261,6 @@ class ApiService {
         headers: {"Content-Type": "application/json"}, body: jsonEncode(body));
   }
 
-  // --- 13. COMPANY PROFILE (UPDATED) ---
   static Future<void> saveCompanyProfile({
     required String companyName,
     required String address,
@@ -292,7 +270,6 @@ class ApiService {
     String? logoBase64,
   }) async {
     if (currentUserId == null) throw Exception("User not logged in");
-
     final url = Uri.parse('$baseUrl/save-profile');
     final body = {
       "user_id": currentUserId,
@@ -303,16 +280,8 @@ class ApiService {
       "gst_number": gst ?? "",
       "logo_base64": logoBase64 ?? ""
     };
-
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/json"},
-      body: jsonEncode(body),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception("Failed to save profile");
-    }
+    await http.post(url,
+        headers: {"Content-Type": "application/json"}, body: jsonEncode(body));
   }
 
   static Future<Map<String, dynamic>> fetchCompanyProfile() async {
@@ -327,10 +296,11 @@ class ApiService {
     }
   }
 
-  // --- 12. PAYMENTS & STATUS ---
+  // --- 10. PAYMENTS & STATUS ---
+
   static Future<void> addPayment(
       int invoiceId, double amount, String mode) async {
-    final url = Uri.parse('$baseUrl/add-payment');
+    final url = Uri.parse('$baseUrl/payment/add');
     final body = {
       "invoice_id": invoiceId,
       "amount": amount,
@@ -341,6 +311,36 @@ class ApiService {
         headers: {"Content-Type": "application/json"}, body: jsonEncode(body));
   }
 
+  static Future<void> updatePayment(
+      int paymentId, double newAmount, String newMode) async {
+    final url = Uri.parse(
+        '$baseUrl/payment/update?payment_id=$paymentId&new_amount=$newAmount&new_mode=$newMode');
+    await http.put(url);
+  }
+
+  static Future<Map<String, dynamic>> fetchPaymentStatus(int invoiceId) async {
+    final url = Uri.parse('$baseUrl/payment/status/$invoiceId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      return {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  static Future<List<dynamic>> fetchPaymentLedger() async {
+    if (currentUserId == null) return [];
+    final url = Uri.parse('$baseUrl/payment/ledger?user_id=$currentUserId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      throw Exception("Failed to load ledger");
+    } catch (e) {
+      return [];
+    }
+  }
+
   static Future<List<dynamic>> fetchPaymentsForInvoice(int invoiceId) async {
     final url = Uri.parse('$baseUrl/get-payments/$invoiceId');
     final response = await http.get(url);
@@ -348,9 +348,32 @@ class ApiService {
     throw Exception("Failed to load payments");
   }
 
-  static Future<void> updateOrderStatus(int id, String status) async {
-    final url =
-        Uri.parse('$baseUrl/update-order-status?invoice_id=$id&status=$status');
+  static Future<void> updateOrderStatus(int invoiceId, String status) async {
+    final url = Uri.parse(
+        '$baseUrl/orders/update-status?invoice_id=$invoiceId&status=$status');
     await http.post(url);
+  }
+
+  static Future<List<dynamic>> fetchPendingOrders() async {
+    if (currentUserId == null) return [];
+    final url = Uri.parse('$baseUrl/orders/pending?user_id=$currentUserId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static Future<Map<String, dynamic>> fetchOrderDetails(int invoiceId) async {
+    final url = Uri.parse('$baseUrl/orders/get/$invoiceId');
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) return jsonDecode(response.body);
+      throw Exception("Failed to load order");
+    } catch (e) {
+      return {};
+    }
   }
 }

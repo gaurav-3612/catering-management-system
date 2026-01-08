@@ -2,4 +2,4 @@ fastapi
 uvicorn
 sqlmodel
 google-generativeai
-python-multipart
+pydantic

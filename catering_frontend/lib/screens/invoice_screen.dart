@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:catering_frontend/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -8,6 +7,7 @@ import '../api_service.dart';
 import '../notification_service.dart';
 import '../translations.dart';
 import '../main.dart';
+import 'dashboard_screen.dart';
 
 class InvoiceScreen extends StatefulWidget {
   final int menuId;
@@ -26,29 +26,45 @@ class InvoiceScreen extends StatefulWidget {
 class _InvoiceScreenState extends State<InvoiceScreen> {
   final TextEditingController _clientController = TextEditingController();
   final TextEditingController _taxController =
-      TextEditingController(text: "18"); // Default 18% GST
+      TextEditingController(text: "18");
   final TextEditingController _discountController =
       TextEditingController(text: "0");
-
   final FocusNode _discountFocusNode = FocusNode();
 
   double _grandTotal = 0;
   DateTime _selectedDate = DateTime.now();
+  Map<String, dynamic>? _menuDetails; // To store fetched menu items
 
-  String t(String key) {
-    return AppTranslations.get(currentLanguage.value, key);
-  }
+  String t(String key) => AppTranslations.get(currentLanguage.value, key);
 
   @override
   void initState() {
     super.initState();
     _calculateTotal();
+    _fetchMenuDetails(); // [ADDED] Fetch items for the invoice
 
     _discountFocusNode.addListener(() {
       if (_discountFocusNode.hasFocus && _discountController.text == "0") {
         _discountController.clear();
       }
     });
+  }
+
+  // [ADDED] Fetch menu items to show in PDF
+  Future<void> _fetchMenuDetails() async {
+    try {
+      final menus = await ApiService.fetchSavedMenus();
+      final myMenu =
+          menus.firstWhere((m) => m['id'] == widget.menuId, orElse: () => null);
+
+      if (myMenu != null) {
+        setState(() {
+          _menuDetails = jsonDecode(myMenu['menu_json']);
+        });
+      }
+    } catch (e) {
+      print("Could not load menu details for invoice: $e");
+    }
   }
 
   @override
@@ -63,7 +79,6 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
   void _calculateTotal() {
     double tax = double.tryParse(_taxController.text) ?? 0;
     double discount = double.tryParse(_discountController.text) ?? 0;
-
     double taxAmount = widget.baseAmount * (tax / 100);
     setState(() {
       _grandTotal = (widget.baseAmount + taxAmount) - discount;
@@ -78,23 +93,17 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
       lastDate: DateTime(2030),
     );
     if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
+      setState(() => _selectedDate = picked);
     }
   }
 
-  // --- PDF GENERATION (UPDATED WITH LOGO) ---
   Future<void> _generatePdfInvoice() async {
-    // 1. Fetch Company Profile
     final profile = await ApiService.fetchCompanyProfile();
 
-    // 2. Set Default Values if profile is empty
     String companyName = profile['company_name'] ?? "AI Catering Planner";
     String companyAddress = profile['address'] ?? "Generated via App";
     String companyPhone = profile['phone'] ?? "";
     String companyEmail = profile['email'] ?? "";
-    String companyGst = profile['gst_number'] ?? "";
     String? logoBase64 = profile['logo_base64'];
 
     pw.MemoryImage? logoImage;
@@ -108,99 +117,105 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
 
     final pdf = pw.Document();
 
+    // Prepare Invoice Items Table Data
+    List<List<String>> tableData = [
+      ['Description', 'Details / Amount'], // Header
+    ];
+
+    // [UPDATED] Clean the text to remove ₹ symbols
+    if (_menuDetails != null) {
+      _menuDetails!.forEach((key, value) {
+        if (value is List && value.isNotEmpty) {
+          // 1. Join items
+          String items = (value).take(4).join(", ");
+          if (value.length > 4) items += " +${value.length - 4} more";
+
+          // 2. FIX: Replace the Rupee symbol with "Rs."
+          items = items.replaceAll('₹', 'Rs. ');
+
+          tableData.add([key.toUpperCase(), items]);
+        }
+      });
+    }
+
+    // Add Costs
+    tableData.add(['', '']); // Spacer
+    tableData.add(['Base Cost', 'Rs. ${widget.baseAmount.toStringAsFixed(2)}']);
+    tableData.add([
+      'Tax (${_taxController.text}%)',
+      '+ Rs. ${(widget.baseAmount * ((double.tryParse(_taxController.text) ?? 0) / 100)).toStringAsFixed(2)}'
+    ]);
+    tableData.add(['Discount', '- Rs. ${_discountController.text}']);
+    tableData.add(['GRAND TOTAL', 'Rs. ${_grandTotal.toStringAsFixed(2)}']);
+
     pdf.addPage(
       pw.Page(
         build: (pw.Context context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // --- HEADER SECTION ---
+              // HEADER
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  // LEFT: Company Details & Logo
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.start,
                     children: [
-                      // SHOW LOGO IF EXISTS
                       if (logoImage != null)
                         pw.Container(
-                          width: 80,
-                          height: 80,
-                          margin: const pw.EdgeInsets.only(bottom: 10),
-                          child: pw.Image(logoImage),
-                        ),
-
+                            width: 80,
+                            height: 80,
+                            margin: const pw.EdgeInsets.only(bottom: 10),
+                            child: pw.Image(logoImage)),
                       pw.Text(companyName,
                           style: pw.TextStyle(
                               fontSize: 24,
                               fontWeight: pw.FontWeight.bold,
                               color: PdfColors.deepPurple)),
-                      pw.SizedBox(height: 5),
                       pw.Text(companyAddress),
                       if (companyPhone.isNotEmpty)
                         pw.Text("Phone: $companyPhone"),
                       if (companyEmail.isNotEmpty)
                         pw.Text("Email: $companyEmail"),
-                      if (companyGst.isNotEmpty)
-                        pw.Text("GSTIN: $companyGst",
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                     ],
                   ),
-
-                  // RIGHT: Invoice Label
                   pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.end,
-                      children: [
-                        pw.Text("INVOICE",
-                            style: pw.TextStyle(
-                                fontSize: 30,
-                                fontWeight: pw.FontWeight.bold,
-                                color: PdfColors.grey)),
-                        pw.SizedBox(height: 5),
-                        pw.Text(
-                            "Date: ${_selectedDate.toString().split(' ')[0]}"),
-                        pw.Text("Client: ${_clientController.text}",
-                            style:
-                                pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      ])
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
+                    children: [
+                      pw.Text("INVOICE",
+                          style: pw.TextStyle(
+                              fontSize: 30,
+                              fontWeight: pw.FontWeight.bold,
+                              color: PdfColors.grey)),
+                      pw.Text(
+                          "Date: ${_selectedDate.toString().split(' ')[0]}"),
+                      pw.Text("Client: ${_clientController.text}",
+                          style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    ],
+                  )
                 ],
               ),
-
               pw.SizedBox(height: 20),
               pw.Divider(thickness: 2),
               pw.SizedBox(height: 20),
 
-              // --- INVOICE ITEMS TABLE ---
+              // [UPDATED] DYNAMIC TABLE
               pw.Table.fromTextArray(
-                context: context,
-                headerStyle: pw.TextStyle(
-                    fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration:
-                    const pw.BoxDecoration(color: PdfColors.deepPurple),
-                data: <List<String>>[
-                  <String>['Description', 'Amount'],
-                  <String>[
-                    'Catering Service Base Cost',
-                    'Rs. ${widget.baseAmount.toStringAsFixed(2)}'
-                  ],
-                  <String>[
-                    'Tax (${_taxController.text}%)',
-                    '+ Rs. ${(widget.baseAmount * ((double.tryParse(_taxController.text) ?? 0) / 100)).toStringAsFixed(2)}'
-                  ],
-                  <String>['Discount', '- Rs. ${_discountController.text}'],
-                  <String>[
-                    'GRAND TOTAL',
-                    'Rs. ${_grandTotal.toStringAsFixed(2)}'
-                  ],
-                ],
-              ),
+                  context: context,
+                  headerStyle: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+                  headerDecoration:
+                      const pw.BoxDecoration(color: PdfColors.deepPurple),
+                  data: tableData,
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(1),
+                    1: const pw.FlexColumnWidth(2),
+                  }),
 
               pw.SizedBox(height: 30),
 
-              // --- FOOTER WITH QR ---
+              // FOOTER & QR
               pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -213,7 +228,6 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
                           pw.Text("1. Please pay within 7 days."),
                           pw.Text("2. Thank you for your business!"),
                         ]),
-                    // QR Code for UPI
                     pw.BarcodeWidget(
                       barcode: pw.Barcode.qrCode(),
                       data:
@@ -257,13 +271,8 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
         eventDate: _selectedDate,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(t('invoice_saved')),
-          backgroundColor: Colors.green,
-        ),
-      );
-
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(t('invoice_saved')), backgroundColor: Colors.green));
       await _generatePdfInvoice();
     } catch (e) {
       print("ERROR SAVING INVOICE: $e");
@@ -283,7 +292,6 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
               backgroundColor: Colors.deepPurple,
               foregroundColor: Colors.white,
               actions: [
-                // ✅ HOME BUTTON
                 IconButton(
                   icon: const Icon(Icons.home),
                   onPressed: () {
@@ -300,6 +308,7 @@ class _InvoiceScreenState extends State<InvoiceScreen> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
+                // ... (UI Inputs remain exactly the same as your code) ...
                 Row(
                   children: [
                     Text("${t('event_date')}: ",
